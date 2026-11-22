@@ -16,23 +16,21 @@ jobs:
       uses: actions/checkout@v4
 
     - name: Set up JDK 17
-      uses: actions/setup-java@v4
+      uses: actions/setup-java@v5
       with:
         java-version: '17'
         distribution: 'temurin'
         cache: gradle
 
     - name: Setup Node.js
-      uses: actions/setup-node@v4
+      uses: actions/setup-node@v5
       with:
         node-version: '20'
 
     - name: Install dependencies
-      working-directory: ./parkit-app
       run: npm ci
 
     - name: Build web assets
-      working-directory: ./parkit-app
       run: npm run build
 
     - name: Setup Android SDK
@@ -43,16 +41,15 @@ jobs:
         ndk: ''
 
     - name: Copy web assets to Android project
-      working-directory: ./parkit-app
       run: npx cap copy android
 
     - name: Build APK
-      working-directory: ./parkit-app/android
-      run: ./gradlew assembleDebug
+      working-directory: ./android
+      run: chmod +x gradlew && ./gradlew assembleDebug
 
     - name: Upload APK artifact
       uses: actions/upload-artifact@v4
       with:
         name: parkit-debug-apk
-        path: ./parkit-app/android/app/build/outputs/apk/debug/app-debug.apk
+        path: ./android/app/build/outputs/apk/debug/app-debug.apk
         retention-days: 30
