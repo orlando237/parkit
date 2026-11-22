@@ -33,11 +33,13 @@ jobs:
         distribution: 'temurin'
         cache: gradle
 
-    - name: Setup Android SDK
-      uses: android-actions/setup-android@v3
-      with:
-        api-level: 34
-        build-tools: 34.0.0
+    - name: Install Android SDK packages
+      run: |
+        cd $ANDROID_SDK_ROOT/cmdline-tools/latest/bin
+        yes | ./sdkmanager --licenses
+        ./sdkmanager "platforms;android-34" "build-tools;34.0.0"
+      env:
+        ANDROID_SDK_ROOT: /usr/local/share/android-sdk
 
     - name: Copy web assets to Android project
       run: |
@@ -49,6 +51,7 @@ jobs:
       run: |
         chmod +x gradlew
         export ANDROID_HOME=/usr/local/share/android-sdk
+        export ANDROID_SDK_ROOT=/usr/local/share/android-sdk
         ./gradlew assembleDebug --no-daemon
 
     - name: Upload APK
