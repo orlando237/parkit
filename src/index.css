@@ -1,4 +1,5 @@
 @import 'tailwindcss';
+@import '../public/fonts/fonts.css';
 
 @theme {
   --font-display: 'Lilita One', cursive;
@@ -38,6 +39,9 @@
     color: var(--color-ink);
     font-family: var(--font-sans);
     overscroll-behavior: none;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
   }
 
   button {
@@ -564,6 +568,40 @@
 }
 
 @layer utilities {
+  /* ---------- Marco de la app ----------
+     Escritorio: tarjeta centrada de 390x844.
+     Móvil / APK: pantalla completa, sin esquinas ni sombra, respetando las safe-areas. */
+  .app-frame {
+    padding: max(8px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px))
+      max(8px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));
+  }
+
+  .app-stage {
+    max-width: 390px;
+    max-height: 844px;
+  }
+
+  .app-shell {
+    border-radius: 32px;
+    box-shadow: 0 20px 50px rgba(34, 82, 138, 0.28);
+  }
+
+  @media (max-width: 480px) {
+    .app-frame {
+      padding: 0;
+    }
+
+    .app-stage {
+      max-width: none;
+      max-height: none;
+    }
+
+    .app-shell {
+      border-radius: 0;
+      box-shadow: none;
+    }
+  }
+
   .screen-scroll {
     position: absolute;
     inset: 0;
@@ -576,6 +614,12 @@
       radial-gradient(circle at 88% 14%, rgba(169, 202, 232, 0.32) 0%, transparent 48%),
       radial-gradient(circle at 12% 72%, rgba(255, 194, 0, 0.14) 0%, transparent 52%),
       #fff;
+  }
+
+  @media (max-width: 480px) {
+    .screen-scroll {
+      padding-bottom: calc(104px + env(safe-area-inset-bottom, 0px));
+    }
   }
 
   .safe-bottom {

@@ -42,12 +42,9 @@ export default function App() {
   const exitX = direction === 'back' ? '100%' : direction === 'tab' ? 0 : '-28%'
 
   return (
-    <div className="flex h-full items-center justify-center px-[max(16px,env(safe-area-inset-left,0px))] py-[max(8px,env(safe-area-inset-top,0px))]">
-      <div id="stage" className="h-full max-h-[844px] w-full max-w-[390px] min-w-0">
-        <div
-          id="app"
-          className="relative h-full w-full overflow-clip rounded-[32px] bg-white shadow-[0_20px_50px_rgba(34,82,138,.28)]"
-        >
+    <div className="app-frame flex h-full items-center justify-center">
+      <div id="stage" className="app-stage h-full w-full min-w-0">
+        <div id="app" className="app-shell relative h-full w-full overflow-clip bg-white">
           <AnimatePresence initial={false} custom={direction}>
             <motion.div
               key={screen}

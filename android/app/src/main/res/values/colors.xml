@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="colorPrimary">#3B76B1</color>
+    <color name="colorPrimaryDark">#22528A</color>
+    <color name="colorAccent">#FFC200</color>
+    <color name="parkitGround">#D9E6F2</color>
+    <color name="parkitInk">#22528A</color>
+    <color name="parkitSun">#FFC200</color>
+</resources>

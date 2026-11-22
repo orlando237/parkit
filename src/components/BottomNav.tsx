@@ -17,7 +17,7 @@ export function BottomNav() {
 
   return (
     <nav
-      className="lg-nav absolute inset-x-4 bottom-[calc(20px+env(safe-area-inset-bottom,0px))] z-20 flex items-center gap-1 rounded-full p-2"
+      className="lg-nav absolute inset-x-4 bottom-[calc(20px+env(safe-area-inset-bottom,0px))] z-20 flex items-center gap-1 rounded-full p-2 max-[480px]:inset-x-3 max-[480px]:bottom-[calc(10px+env(safe-area-inset-bottom,0px))]"
       aria-label="Navegación principal"
     >
       {TABS.map(({ id, label, Icon, wide }) => {

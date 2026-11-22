@@ -19,7 +19,7 @@ export function Screen({ children, label }: ScreenProps) {
 
 export function BrandHeader({ subtitle }: { subtitle: string }) {
   return (
-    <header className="relative z-10 px-4 pt-7">
+    <header className="relative z-10 px-4 pt-[calc(28px+env(safe-area-inset-top,0px))]">
       <div className="flex items-center gap-4">
         <div className="flex h-[52px] w-[52px] items-center justify-center rounded-[16px] bg-sun shadow-[inset_0_1.5px_1px_rgba(255,255,255,.75)]">
           <IconLogo className="h-8 w-8" />
@@ -41,7 +41,7 @@ interface BackHeaderProps {
 
 export function BackHeader({ eyebrow, title, onBack, badge, children }: BackHeaderProps) {
   return (
-    <header className="relative z-10 px-4 pt-7">
+    <header className="relative z-10 px-4 pt-[calc(28px+env(safe-area-inset-top,0px))]">
       <div className="flex items-start gap-3">
         <button
           type="button"

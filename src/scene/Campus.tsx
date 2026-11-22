@@ -321,6 +321,7 @@ function FloatingLabel({ text, position, zone }: { text: string; position: [numb
     host.style.opacity = visible ? '1' : '0'
     host.style.left = `${x}px`
     host.style.top = `${y}px`
+    host.style.zIndex = visible ? String(Math.round(1000 - v.z * 1000)) : '0'
   })
 
   return null

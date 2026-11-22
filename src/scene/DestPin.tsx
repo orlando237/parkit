@@ -36,6 +36,7 @@ function DestPin({ target, running, finished }: { target: SceneTarget; running: 
     host.style.left = `${Math.max(62, Math.min(size.width - 62, x))}px`
     host.style.top = `${Math.max(48, Math.min(size.height - 64, y))}px`
     host.dataset.visible = v.z < 1 && (running || finished) ? 'true' : 'false'
+    host.style.zIndex = host.dataset.visible === 'true' ? String(Math.round(1000 - v.z * 1000)) : '0'
   })
 
   return null
