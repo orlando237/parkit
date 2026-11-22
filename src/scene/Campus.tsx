@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import { GEO, ORDER } from '../domain/data'
@@ -294,6 +294,7 @@ function Kiosk({ k }: { k: (typeof KIOSKS)[number] }) {
 function FloatingLabel({ text, position, zone }: { text: string; position: [number, number, number]; zone?: boolean }) {
   const { camera, size } = useThree()
   const vec = useMemo(() => new THREE.Vector3(...position), [position])
+  const last = useRef({ x: -1, y: -1, z: -1 })
 
   const host = useMemo(() => {
     if (typeof document === 'undefined') return null
@@ -318,10 +319,18 @@ function FloatingLabel({ text, position, zone }: { text: string; position: [numb
     const x = (v.x * 0.5 + 0.5) * size.width
     const y = (-v.y * 0.5 + 0.5) * size.height
     const visible = v.z < 1 && x > 16 && x < size.width - 16 && y > 36 && y < size.height - 16
-    host.style.opacity = visible ? '1' : '0'
-    host.style.left = `${x}px`
-    host.style.top = `${y}px`
-    host.style.zIndex = visible ? String(Math.round(1000 - v.z * 1000)) : '0'
+    const prev = last.current
+    if (prev.x !== x || prev.y !== y) {
+      host.style.transform = `translate(${x}px, ${y}px) translate(-50%, -100%)`
+      prev.x = x
+      prev.y = y
+    }
+    if (prev.z !== v.z) {
+      host.style.zIndex = visible ? String(Math.round(1000 - v.z * 1000)) : '0'
+      prev.z = v.z
+    }
+    const opacity = visible ? '1' : '0'
+    if (host.style.opacity !== opacity) host.style.opacity = opacity
   })
 
   return null

@@ -26,30 +26,36 @@ jobs:
     - name: Build web assets
       run: npm run build
 
-    - name: Setup Android SDK
-      uses: android-actions/setup-android@v3
-      with:
-        api-level: 34
-        build-tools: 34.0.0
-        ndk: ''
-
-    - name: Copy web assets to Android project
-      run: |
-        mkdir -p android/app/src/main/assets/public
-        cp -r dist/* android/app/src/main/assets/public/
-
-    - name: Set up JDK 17
+    - name: Setup JDK 17
       uses: actions/setup-java@v4
       with:
         java-version: '17'
         distribution: 'temurin'
         cache: gradle
 
+    - name: Install Android SDK
+      run: |
+        mkdir -p $ANDROID_SDK_ROOT/cmdline-tools
+        cd $ANDROID_SDK_ROOT/cmdline-tools
+        curl -s https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -o cmdline.zip
+        unzip -q cmdline.zip
+        mv cmdline-tools cmdline-tools/latest
+        yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --licenses
+        $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager "platforms;android-34" "build-tools;34.0.0"
+      env:
+        ANDROID_SDK_ROOT: ~/android-sdk
+
+    - name: Copy web assets to Android project
+      run: |
+        mkdir -p android/app/src/main/assets/public
+        cp -r dist/* android/app/src/main/assets/public/
+
     - name: Build Debug APK
       working-directory: ./android
       run: |
         chmod +x gradlew
-        export JAVA_HOME=$JAVA_HOME_17_X64
+        export ANDROID_HOME=~/android-sdk
+        export ANDROID_SDK_ROOT=~/android-sdk
         ./gradlew assembleDebug --no-daemon
 
     - name: Upload APK
