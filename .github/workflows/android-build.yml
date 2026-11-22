@@ -24,20 +24,21 @@ jobs:
     - name: Build web assets
       run: npm run build
 
-    - name: Copy web assets to Android project
-      run: npx cap copy android
+    - name: Copy web assets to Android
+      run: |
+        mkdir -p android/app/src/main/assets/public
+        cp -r dist/* android/app/src/main/assets/public/
 
     - name: Build Debug APK
       working-directory: ./android
       run: |
         chmod +x gradlew
-        ./gradlew assembleDebug --stacktrace
-      continue-on-error: false
+        ./gradlew assembleDebug --stacktrace --no-daemon
 
     - name: Upload APK
-      if: always()
+      if: success()
       uses: actions/upload-artifact@v4
       with:
         name: parkit-debug-apk
         path: ./android/app/build/outputs/apk/debug/*.apk
-        retention-days: 7
+        retention-days: 30
