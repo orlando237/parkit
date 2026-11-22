@@ -2,9 +2,7 @@ name: Build Android APK
 
 on:
   push:
-    branches: [ main, master, build ]
-  pull_request:
-    branches: [ main, master, build ]
+    branches: [ main ]
   workflow_dispatch:
 
 jobs:
@@ -19,8 +17,6 @@ jobs:
       uses: actions/setup-node@v4
       with:
         node-version: '20'
-        cache: 'npm'
-        cache-dependency-path: ./package-lock.json
 
     - name: Install dependencies
       run: npm ci
@@ -28,24 +24,20 @@ jobs:
     - name: Build web assets
       run: npm run build
 
-    - name: Setup Android SDK
-      uses: android-actions/setup-android@v3
-
-    - name: Copy web assets
+    - name: Copy web assets to Android project
       run: npx cap copy android
-
-    - name: Grant execute permission to gradlew
-      working-directory: ./android
-      run: chmod +x gradlew
 
     - name: Build Debug APK
       working-directory: ./android
-      run: ./gradlew assembleDebug --no-daemon
+      run: |
+        chmod +x gradlew
+        ./gradlew assembleDebug --stacktrace
+      continue-on-error: false
 
-    - name: Upload APK artifact
+    - name: Upload APK
       if: always()
       uses: actions/upload-artifact@v4
       with:
         name: parkit-debug-apk
         path: ./android/app/build/outputs/apk/debug/*.apk
-        retention-days: 30
+        retention-days: 7
