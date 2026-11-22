@@ -318,7 +318,7 @@ function FloatingLabel({ text, position, zone }: { text: string; position: [numb
     const v = vec.clone().project(camera)
     const x = (v.x * 0.5 + 0.5) * size.width
     const y = (-v.y * 0.5 + 0.5) * size.height
-    const visible = v.z < 1 && x > 16 && x < size.width - 16 && y > 36 && y < size.height - 16
+    const visible = v.z < 1 && x > 16 && x < size.width - 16 && y > 36 && y < size.height - 96
     const prev = last.current
     if (prev.x !== x || prev.y !== y) {
       host.style.transform = `translate(${x}px, ${y}px) translate(-50%, -100%)`
