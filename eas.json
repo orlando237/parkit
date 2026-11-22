@@ -1,0 +1,28 @@
+{
+  "cli": {
+    "version": ">= 5.0.0"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "android": {
+        "gradleCommand": "./gradlew assembleDebug"
+      }
+    },
+    "preview": {
+      "distribution": "internal",
+      "android": {
+        "gradleCommand": "./gradlew assembleRelease"
+      }
+    },
+    "production": {
+      "android": {
+        "gradleCommand": "./gradlew assembleRelease"
+      }
+    }
+  },
+  "submit": {
+    "production": {}
+  }
+}
