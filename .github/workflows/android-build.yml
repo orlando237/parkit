@@ -33,14 +33,11 @@ jobs:
         distribution: 'temurin'
         cache: gradle
 
-    - name: Check SDK and accept licenses
-      run: |
-        echo "SDK at: $ANDROID_HOME"
-        ls -la $ANDROID_HOME
-        yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses
-        $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platforms;android-34" "build-tools;34.0.0"
-      env:
-        ANDROID_HOME: /usr/local/share/android-sdk
+    - name: Setup Android SDK
+      uses: android-actions/setup-android@v3
+      with:
+        api-level: 34
+        build-tools: 34.0.0
 
     - name: Copy web assets to Android project
       run: |

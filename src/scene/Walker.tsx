@@ -4,7 +4,7 @@ import * as THREE from 'three'
 import { useGuide } from '../store/useGuide'
 import type { SceneTarget } from './GuideScene'
 
-const SPEED = 1 / 6
+const SPEED = 1 / 4
 
 function lerpAngle(a: number, b: number, t: number) {
   let diff = b - a
@@ -101,13 +101,13 @@ export function Walker({ target, running, finished }: { target: SceneTarget; run
     group.current.rotation.y = lerpAngle(group.current.rotation.y, angle, 0.25)
 
     const entering = Math.max(0, (t - 0.72) / 0.28)
-    const back = 33 - entering * 6
-    const height = 21 + entering * 22
-    const ahead = 22 - entering * 20
+    const back = 33 - entering * 9
+    const height = 21 + entering * 30
+    const ahead = 22 - entering * 22
     const camX = pos.x - Math.sin(angle) * back
     const camZ = pos.z - Math.cos(angle) * back
     camera.position.lerp(new THREE.Vector3(camX, height, camZ), 0.14)
-    camera.lookAt(pos.x + Math.sin(angle) * ahead, 4.2 + entering * 2, pos.z + Math.cos(angle) * ahead)
+    camera.lookAt(pos.x + Math.sin(angle) * ahead, 4.2 + entering * 1.5, pos.z + Math.cos(angle) * ahead)
 
     const remaining = Math.max(0, 1 - t)
     const hudKey = Math.round(remaining * 100)
