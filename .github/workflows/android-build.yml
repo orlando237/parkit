@@ -8,7 +8,7 @@ on:
 jobs:
   build-apk:
     runs-on: ubuntu-latest
-
+    
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
@@ -33,34 +33,30 @@ jobs:
         distribution: 'temurin'
         cache: gradle
 
-    - name: Accept Android SDK licenses and install packages
+    - name: Install Android SDK packages
       run: |
-        echo "ANDROID_HOME=$ANDROID_HOME"
-        yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses
-        "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0" "platform-tools"
+        cd "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin"
+        ./sdkmanager --install "platforms;android-36" "build-tools;36.0.0"
+      env:
+        ANDROID_SDK_ROOT: /usr/local/share/android-sdk
 
-    - name: Copy web assets to Android project
+    - name: Copy web assets
       run: |
         mkdir -p android/app/src/main/assets/public
         rm -rf android/app/src/main/assets/public/*
         cp -r dist/* android/app/src/main/assets/public/
-        ls -la android/app/src/main/assets/public/
 
     - name: Build Debug APK
       working-directory: ./android
       run: |
-        set -o pipefail
         chmod +x gradlew
-        ./gradlew assembleDebug --no-daemon --stacktrace 2>&1 | tee gradle-build.log
-
-    - name: Verify APK
-      working-directory: ./android
-      run: ls -la app/build/outputs/apk/debug/
+        export ANDROID_HOME=/usr/local/share/android-sdk
+        ./gradlew assembleDebug --no-daemon
 
     - name: Upload APK
+      if: success()
       uses: actions/upload-artifact@v4
       with:
         name: parkit-debug-apk
-        path: android/app/build/outputs/apk/debug/app-debug.apk
-        if-no-files-found: error
+        path: ./android/app/build/outputs/apk/debug/app-debug.apk
         retention-days: 30
