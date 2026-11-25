@@ -77,7 +77,17 @@ export function CupoScreen() {
               const isMine = parked?.spotId === p.id
               const sel = chosen === p.id
               const isSug = !sel && !chosen && p.id === sug
-              const label = sel ? 'Elegido' : isMine ? 'Tu cupo' : p.free ? (p.shade ? 'Sombra' : 'Sol') : 'Ocupado'
+              const label = sel
+                ? 'Elegido'
+                : isMine
+                  ? 'Tu cupo'
+                  : p.free
+                    ? p.shade
+                      ? 'Sombra'
+                      : 'Sol'
+                    : p.status === 'apartado'
+                      ? 'Apartado'
+                      : 'Ocupado'
               const style: React.CSSProperties = sel
                 ? { background: 'linear-gradient(180deg,#FFD026,#FFC200)', boxShadow: '0 4px 0 #141414', color: '#141414', borderColor: '#141414' }
                 : isMine

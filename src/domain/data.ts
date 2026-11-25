@@ -79,7 +79,10 @@ export function buildZone(id: ZoneId, seed: ZoneSeed): Zone {
       zone: id,
       sub: sb.id,
       free: free === 1,
+      status: free === 1 ? 'libre' : 'ocupado',
       shade: shade === 1,
+      reservedUntil: null,
+      userId: null,
     })),
   }))
   return {

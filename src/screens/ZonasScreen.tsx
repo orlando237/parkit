@@ -1,273 +1,451 @@
-import { motion } from 'framer-motion'
+import { useMemo } from 'react'
 import { useParkit } from '../store/useParkit'
 import { useNav } from '../store/useNav'
-import { CLASS_TIMES, ORDER } from '../domain/data'
+import { ORDER } from '../domain/data'
 import {
-  formatHour,
-  marginInfo,
-  nearestZoneId,
-  sortedZones,
+  findSpotInfo,
+  suggestedId,
   zoneLabel,
   zoneStats,
   zoneStatus,
 } from '../domain/selectors'
 import { BrandHeader, Screen } from '../components/Screen'
-import { IconChevron, IconClock, IconDown, IconFlag, IconInfo, IconSun, IconTree } from '../components/icons'
-import type { ZoneId } from '../domain/types'
+import {
+  IconDown,
+  IconFlag,
+  IconLayers,
+  IconLock,
+  IconMap,
+  IconMoto,
+  IconSun,
+  IconTree,
+} from '../components/icons'
+import type { Spot, SubBlock, ZoneId } from '../domain/types'
+
+function miniState(p: Spot, inspected: string | null, chosen: string | null, mineId?: string) {
+  if (mineId === p.id) return 'mine'
+  if (chosen === p.id || (inspected === p.id && p.free)) return 'selected'
+  return p.free ? 'free' : 'busy'
+}
+
+// Geometría y orientación distinta de sub-bloques para cada zona de parqueo
+const ZONE_LAYOUT_META: Record<ZoneId, { shapeLabel: string; dimsLabel: string }> = {
+  A: { shapeLabel: 'Disposición en L · Bahía norte + 2 islas', dimsLabel: '18 m × 16 m' },
+  B: { shapeLabel: 'Corredor longitudinal escalonado', dimsLabel: '26 m × 11 m' },
+  C: { shapeLabel: 'Patio en U · 2 alas verticales + fondo', dimsLabel: '15 m × 22 m' },
+  D: { shapeLabel: 'Islas diagonales + bahía central ancha', dimsLabel: '22 m × 18 m' },
+}
+
+interface SubBlockCardProps {
+  sb: SubBlock
+  colsClass: string
+  className?: string
+  activeSub?: string
+  parkedSpotId?: string
+  inspected: string | null
+  chosen: string | null
+  sug: string | null
+  onInspectSub: (id: string) => void
+  onInspectSpot: (id: string) => void
+}
+
+function SubBlockCard({
+  sb,
+  colsClass,
+  className = '',
+  activeSub,
+  parkedSpotId,
+  inspected,
+  chosen,
+  sug,
+  onInspectSub,
+  onInspectSpot,
+}: SubBlockCardProps) {
+  const hasMineInSub = sb.spots.some((p) => p.id === parkedSpotId)
+  const subFree = sb.spots.filter((p) => p.free).length
+
+  return (
+    <div data-active={sb.id === activeSub || hasMineInSub} className={`subblock ${className}`}>
+      <button
+        type="button"
+        onClick={() => onInspectSub(sb.id)}
+        className="flex flex-wrap items-center justify-between gap-1 text-left"
+      >
+        <span className="flex items-center gap-1 text-[12px] font-black text-ink">
+          <IconLayers className="h-3 w-3 shrink-0 text-card" />
+          {sb.title}
+        </span>
+        <span className="shrink-0 rounded-full border border-card/30 bg-panel px-1.5 py-0.5 text-[9px] font-black text-ink">
+          {sb.env} · {subFree}/{sb.spots.length}
+        </span>
+      </button>
+
+      {hasMineInSub && (
+        <span className="rounded-md bg-sun px-2 py-0.5 text-center text-[9.5px] font-black text-black">
+          TU MOTO ESTÁ EN ESTE SUB-BLOQUE
+        </span>
+      )}
+
+      <div className={`grid gap-[7px] ${colsClass}`}>
+        {sb.spots.map((p) => {
+          const state = miniState(p, inspected, chosen, parkedSpotId)
+          const isSug = state === 'free' && p.id === sug && !chosen
+          const label =
+            state === 'mine'
+              ? 'TU MOTO'
+              : state === 'selected'
+                ? 'Elegido'
+                : p.free
+                  ? p.shade
+                    ? 'Sombra'
+                    : 'Sol'
+                  : p.status === 'apartado'
+                    ? 'Apartado'
+                    : 'Ocupado'
+          return (
+            <button
+              key={p.id}
+              type="button"
+              data-state={state}
+              onClick={() => onInspectSpot(p.id)}
+              aria-pressed={state === 'selected'}
+              aria-label={`Puesto ${p.id}, ${label}`}
+              className={`mini ${isSug ? 'pulse-ring' : ''}`}
+            >
+              <span className="font-display text-[15.5px] leading-none tracking-wide">{p.id}</span>
+              <span className="mt-[3px] text-[9px] font-black opacity-95">{label}</span>
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
 
 export function ZonasScreen() {
   const zones = useParkit((s) => s.zones)
+  const curZone = useParkit((s) => s.curZone)
+  const setZone = useParkit((s) => s.setZone)
   const pref = useParkit((s) => s.pref)
   const setPref = useParkit((s) => s.setPref)
-  const classAt = useParkit((s) => s.classAt)
-  const setClassAt = useParkit((s) => s.setClassAt)
+  const inspected = useParkit((s) => s.inspected)
+  const chosen = useParkit((s) => s.chosen)
+  const inspectSpot = useParkit((s) => s.inspectSpot)
+  const inspectSub = useParkit((s) => s.inspectSub)
+  const reserve = useParkit((s) => s.reserve)
   const parked = useParkit((s) => s.parked)
-  const setZone = useParkit((s) => s.setZone)
+  const setMapView = useParkit((s) => s.setMapView)
   const openSheet = useParkit((s) => s.openSheet)
-  const reports = useParkit((s) => s.reports)
   const go = useNav((s) => s.go)
 
-  const ids = sortedZones(zones, pref)
-  const best = zones[ids[0]]
-  const near = zones[nearestZoneId(zones)]
-  const bestStats = zoneStats(best)
-  const nearStats = zoneStats(near)
-  const margin = marginInfo(best, classAt, 461)
-  const hourLabel = formatHour(classAt)
-  const fresh = reports.length
-    ? `Actualizado ahora · incluye ${reports.length} reporte${reports.length === 1 ? '' : 's'} de la comunidad`
-    : 'Actualizado hace 1 min · datos de ejemplo'
+  const zone = zones[curZone]
+  const st = zoneStats(zone)
+  const status = zoneStatus(zone)
+  const sug = suggestedId(zone, pref)
+  const parkedInfo = parked ? findSpotInfo(zones, parked.spotId) : null
+  const activeId = inspected ?? chosen ?? (parked?.zone === curZone ? parked.spotId : sug)
+  const layoutMeta = ZONE_LAYOUT_META[curZone]
 
-  const banner =
-    bestStats.free === 0
-      ? null
-      : pref === 'sombra' && nearStats.shade === 0 && bestStats.shade > 0 && best.id !== near.id
-        ? `Sombra llena en ${near.name}, la zona más cercana. ${best.name} tiene ${bestStats.shade} cupos con sombra para tu clase de las ${hourLabel}.`
-        : `Zona ${best.id} (${best.name}) tiene ${pref === 'sombra' ? `${bestStats.shade} cupos con sombra` : `${bestStats.sun} cupos al sol`}. Es tu mejor opción para la clase de las ${hourLabel}.`
+  const target = useMemo(() => {
+    const active = activeId ? findSpotInfo(zones, activeId) : null
+    if (active && active.zone.id === curZone) return active
+    const fallback = zone.spots.find((p) => p.free) ?? zone.spots[0]
+    return findSpotInfo(zones, fallback.id)
+  }, [zones, activeId, curZone, zone])
 
-  const openZone = (id: ZoneId) => {
-    setZone(id)
-    go('cupo')
+  const activeSub = target?.sub.id
+  const isMine = Boolean(target && parked?.spotId === target.spot.id)
+
+  const commonProps = {
+    activeSub,
+    parkedSpotId: parked?.spotId,
+    inspected,
+    chosen,
+    sug,
+    onInspectSub: inspectSub,
+    onInspectSpot: inspectSpot,
   }
 
   return (
-    <Screen label="Zonas">
-      <BrandHeader subtitle="Zonas de parqueo cerca de ti" />
-      <main className="relative z-10 px-4 pt-3">
-        <section
-          className="relative rounded-[28px] border border-white/90 bg-panel/75 p-1.5 shadow-[inset_0_1px_1px_rgba(255,255,255,.95)] backdrop-blur-md"
-          aria-label="Mapa de zonas"
-        >
-          <div className="grid grid-cols-2 gap-3.5">
-            {ORDER.map((id) => {
-              const z = zones[id]
-              const st = zoneStats(z)
-              const s = zoneStatus(z)
-              const rec = id === best.id
-              return (
-                <button
-                  key={id}
-                  type="button"
-                  onClick={() => openZone(id)}
-                  aria-label={`${zoneLabel(z)}, ${st.free} cupos libres${rec ? ', recomendada' : ''}`}
-                  className={`lg-surface relative flex min-h-[164px] flex-col justify-between rounded-[22px] border-[3px] p-2.5 text-left text-black ${
-                    rec ? 'ring-[3px] ring-sun ring-offset-1' : ''
-                  }`}
-                  style={{
-                    borderColor: z.border,
-                    background:
-                      id === 'B'
-                        ? 'linear-gradient(160deg,rgba(234,242,250,.95) 0%,rgba(255,255,255,.92) 65%)'
-                        : `linear-gradient(160deg,${z.tf}26 0%,rgba(255,255,255,.92) 65%)`,
-                  }}
-                >
-                  <div>
-                    <span className="flex items-center justify-between gap-1">
-                      <span
-                        className="flex h-8 w-8 items-center justify-center rounded-[10px] border-2 border-black font-display text-[20px]"
-                        style={{ background: z.tf, color: z.tt }}
-                      >
-                        {id}
-                      </span>
-                      <span className="rounded-full px-2 py-0.5 text-[10px] font-black" style={parseStyle(s.st)}>
-                        {s.t}
-                      </span>
-                    </span>
-                    {rec ? (
-                      <span className="mt-1 inline-block rounded-full bg-black px-2 py-0.5 text-[8.5px] font-black tracking-wider text-sun">
-                        RECOMENDADA
-                      </span>
-                    ) : (
-                      <span className="mt-1 inline-block h-[15px]" />
-                    )}
-                    <span className="mt-0.5 block text-[13px] font-black leading-tight text-ink">{z.name}</span>
-                    <span className="block text-[10.5px] font-extrabold text-ink/80">
-                      {st.free} libres · {pref === 'sombra' ? `${st.shade} sombra` : `${st.sun} sol`}
-                    </span>
-                  </div>
-                  <span className="mt-2 grid grid-cols-2 gap-1">
-                    {z.subs.map((sb) => (
-                      <div
-                        key={sb.id}
-                        className={`flex items-center gap-1 rounded-md border border-card/15 bg-white/90 px-1.5 py-1 ${sb.wide ? 'col-span-2' : ''}`}
-                      >
-                        <span className="text-[9px] font-black text-ink">{sb.id}</span>
-                        <span className="ml-auto flex gap-[2px]">
-                          {sb.spots.map((p) => (
-                            <i
-                              key={p.id}
-                              className="block h-[9px] w-[5px] rounded-[2px]"
-                              style={{ background: parked?.spotId === p.id ? '#FFC200' : p.free ? '#22A45D' : '#E5484D' }}
-                            />
-                          ))}
-                        </span>
-                      </div>
-                    ))}
-                  </span>
-                </button>
-              )
-            })}
-          </div>
-          <span className="lg-you pointer-events-none absolute left-1/2 top-1/2 flex h-[34px] w-[34px] -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full text-[11px] font-black text-white ring-[3.5px] ring-white/95">
-            Tú
-          </span>
-        </section>
+    <Screen label="Zonas de parqueo">
+      <BrandHeader subtitle="Interior de la zona de parqueo" />
 
-        <p className="mb-2 mt-4 text-[12px] font-black tracking-[0.14em] text-card">BUSCO CUPO CON</p>
-        <div className="grid grid-cols-2 gap-3">
-          <button type="button" className="seg" aria-pressed={pref === 'sombra'} onClick={() => setPref('sombra')}>
-            <IconTree className="h-[17px] w-[17px]" />
-            Sombra
-          </button>
-          <button type="button" className="seg" aria-pressed={pref === 'sol'} onClick={() => setPref('sol')}>
-            <IconSun className="h-[17px] w-[17px]" />
-            Sol
-          </button>
+      <main className="relative z-10 px-4 pt-3">
+        {/* Selector de las 4 zonas */}
+        <div className="grid grid-cols-4 gap-1.5" role="tablist" aria-label="Seleccionar zona de parqueo">
+          {ORDER.map((id) => {
+            const zStats = zoneStats(zones[id])
+            const hasMyMoto = parked?.zone === id
+            return (
+              <button
+                key={id}
+                type="button"
+                role="tab"
+                aria-selected={id === curZone}
+                onClick={() => setZone(id)}
+                className="zone-tab relative flex flex-col items-center justify-center leading-none"
+              >
+                <span className="text-[13px] font-black">Zona {id}</span>
+                <span className="mt-0.5 text-[9.5px] font-extrabold opacity-80">{zStats.free} lib</span>
+                {hasMyMoto && (
+                  <span
+                    title="Tu moto está en esta zona"
+                    className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full border border-black bg-sun text-[9px] font-black text-black"
+                  >
+                    M
+                  </span>
+                )}
+              </button>
+            )
+          })}
         </div>
 
-        <section className="lg-panel mt-4 rounded-[22px] px-4 py-3.5" aria-label="Tu clase">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <label htmlFor="class-time" className="flex items-center gap-2 text-[14px] font-extrabold">
-              <IconClock className="h-4 w-4 text-card" />
-              Tu clase empieza a las
-            </label>
-            <select
-              id="class-time"
-              value={classAt}
-              onChange={(e) => setClassAt(Number(e.target.value))}
-              className="lg-surface h-[40px] rounded-full border-[3px] border-card px-3 text-[14px] font-black text-ink"
-            >
-              {CLASS_TIMES.map((t) => (
-                <option key={t} value={t}>
-                  {formatHour(t)}
-                </option>
-              ))}
-            </select>
-          </div>
-          {bestStats.free === 0 ? (
-            <>
-              <p className="mt-2 text-[13.5px] font-extrabold leading-snug text-[#B42318]">
-                Todas las zonas están llenas ahora.
+        {/* Aviso puntual del sub-bloque donde está la moto */}
+        {parked && parkedInfo && (
+          parked.zone === curZone ? (
+            <div className="mt-3 flex items-center gap-2.5 rounded-[18px] border-2 border-black bg-sun px-3.5 py-2.5 text-black shadow-sm">
+              <IconMoto className="h-5 w-5 shrink-0" />
+              <p className="text-[12.5px] font-black leading-snug">
+                Tu moto está en <span className="underline">{parkedInfo.sub.title}</span> · puesto{' '}
+                <span className="font-display text-[15px]">{parked.spotId}</span>
               </p>
-              <p className="mt-1 text-[11.5px] font-bold leading-snug text-ink/75">
-                Prueba reportar cambios o revisa de nuevo en unos minutos.
-              </p>
-            </>
+            </div>
           ) : (
-            <>
-              <p className="mt-2 text-[13.5px] font-extrabold leading-snug" style={{ color: margin.color }}>
-                Con {best.name} {margin.txt}.
-              </p>
-              <p className="mt-1 text-[11.5px] font-bold leading-snug text-ink/75">
-                {best.dm} min para parquear + {best.wc} min a pie hasta tu clase · Hora simulada: 7:41 a. m.
-              </p>
-            </>
-          )}
-        </section>
-
-        {banner && (
-          <motion.div
-            initial={{ opacity: 0, y: 6 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="mt-4 rounded-[20px] border-[3px] border-sun bg-[#FFF3C4]/92 p-3.5 text-[#5B4300] shadow-[inset_0_1.5px_1px_rgba(255,255,255,.85)] backdrop-blur-md"
-          >
-            <p className="flex gap-2.5 text-[13.5px] font-extrabold leading-snug">
-              <IconSun className="mt-0.5 h-[17px] w-[17px] shrink-0" />
-              <span>{banner}</span>
-            </p>
             <button
               type="button"
-              onClick={() => openZone(best.id)}
-              className="mt-3 h-[42px] w-full rounded-full bg-black text-[14px] font-black text-sun"
+              onClick={() => setZone(parked.zone)}
+              className="mt-3 flex w-full items-center justify-between gap-2 rounded-[18px] border-2 border-card bg-white/90 px-3.5 py-2 text-left text-[12px] font-extrabold text-ink"
             >
-              {pref === 'sombra' && nearStats.shade === 0 && bestStats.shade > 0 && best.id !== near.id
-                ? `Ir a Zona ${best.id} · ${best.name}`
-                : `Ver cupos de la Zona ${best.id}`}
+              <span className="flex items-center gap-2">
+                <IconMoto className="h-4 w-4 shrink-0 text-card" />
+                Tu moto está en Zona {parked.zone} ({parkedInfo.sub.title} · {parked.spotId})
+              </span>
+              <span className="shrink-0 rounded-full bg-sun px-2.5 py-0.5 text-[11px] font-black text-black">
+                Ver aquí
+              </span>
             </button>
-          </motion.div>
+          )
         )}
 
-        <details className="group mt-4">
-          <summary className="lg-surface flex h-[48px] cursor-pointer list-none items-center justify-between rounded-full border-[3px] border-card px-4 text-[14px] font-extrabold text-ink [&::-webkit-details-marker]:hidden">
-            Ver lista ordenada
-            <IconChevron className="h-[14px] w-[14px] transition-transform group-open:rotate-90" />
-          </summary>
-          <p className="mb-2 mt-3 text-[12px] font-black tracking-[0.12em] text-card">
-            {pref === 'sombra' ? 'ORDENADAS POR SOMBRA Y CERCANÍA' : 'ORDENADAS POR CUPOS AL SOL Y CERCANÍA'}
-          </p>
-          <section className="space-y-3" aria-label="Lista de zonas">
-            {ids.map((id, i) => {
-              const z = zones[id]
-              const st = zoneStats(z)
-              const s = zoneStatus(z)
-              const m = marginInfo(z, classAt, 461)
-              return (
-                <button
-                  key={id}
-                  type="button"
-                  onClick={() => openZone(id)}
-                  className={`lg-surface flex w-full items-center gap-3 rounded-[20px] border-[3px] border-card p-3 text-left ${
-                    i === 0 ? 'ring-[3px] ring-sun ring-offset-1' : ''
-                  }`}
-                >
-                  <span
-                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[14px] border-2 border-black font-display text-[24px]"
-                    style={{ background: z.tf, color: z.tt }}
-                  >
-                    {id}
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block text-[15px] font-black text-ink">{z.name}</span>
-                    <span className="block text-[12px] font-extrabold text-ink/75">
-                      {st.free} libres · {st.shade} con sombra · {z.dm} min
-                    </span>
-                    <span className="mt-1 block text-[11.5px] font-black" style={{ color: m.color }}>
-                      {m.txt}
-                    </span>
-                  </span>
-                  <span className="whitespace-nowrap rounded-full px-2.5 py-1 text-[11px] font-black" style={parseStyle(s.st)}>
-                    {s.t}
-                  </span>
-                </button>
-              )
-            })}
-          </section>
-        </details>
+        {/* Cabecera de la zona + dimensiones reales + filtro Sombra/Sol */}
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <div className="flex items-center gap-2">
+              <h2 className="font-display text-[22px] leading-none text-ink-deep">{zoneLabel(zone)}</h2>
+              <span className="rounded-full px-2.5 py-0.5 text-[10.5px] font-black" style={parseStyle(status.st)}>
+                {status.t}
+              </span>
+            </div>
+            <p className="mt-1 text-[11.5px] font-extrabold text-ink/75">
+              {layoutMeta.shapeLabel} ({layoutMeta.dimsLabel})
+            </p>
+          </div>
 
-        <p className="mt-3 text-center text-[12px] font-bold text-ink/75">{fresh}</p>
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              className="seg seg-sm"
+              aria-pressed={pref === 'sombra'}
+              onClick={() => setPref('sombra')}
+            >
+              <IconTree className="h-[13px] w-[13px]" />
+              Sombra
+            </button>
+            <button
+              type="button"
+              className="seg seg-sm"
+              aria-pressed={pref === 'sol'}
+              onClick={() => setPref('sol')}
+            >
+              <IconSun className="h-[13px] w-[13px]" />
+              Sol
+            </button>
+          </div>
+        </div>
+
+        {/* Leyenda compacta */}
+        <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2 px-1 text-[11.5px] font-extrabold text-ink">
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="flex items-center gap-1.5">
+              <span className="h-3 w-3 rounded-[4px] border border-free-deep bg-free" />
+              Libre
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="h-3 w-3 rounded-[4px] border border-busy-deep bg-busy" />
+              Ocupado
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="h-3 w-3 rounded-[4px] border border-black bg-mine" />
+              Tu moto
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="h-3 w-3 rounded-[4px] border border-black bg-sun" />
+              Elegido
+            </span>
+          </div>
+          <span className="font-black text-card">{st.free}/{zone.spots.length} libres</span>
+        </div>
+
+        {/* PLANO INTERNO CON DISTRIBUCIÓN ÚNICA POR ZONA */}
+        {curZone === 'A' && (
+          <section className="blueprint mt-2.5" aria-label="Plano en L de Zona A Informática">
+            <div className="aisle">
+              <IconDown className="h-[12px] w-[12px]" />
+              ENTRADA NORTE · PASILLO TRANSVERSAL (18 m)
+              <IconDown className="h-[12px] w-[12px]" />
+            </div>
+            {/* A1 arriba a lo ancho (1x4) */}
+            <SubBlockCard sb={zone.subs[0]} colsClass="grid-cols-4" {...commonProps} />
+            {/* Abajo en L: A2 (2x2) a la izquierda, pasillo al centro y A3 (2x2) desplazado abajo a la derecha */}
+            <div className="grid grid-cols-12 items-start gap-2">
+              <div className="col-span-6">
+                <SubBlockCard sb={zone.subs[1]} colsClass="grid-cols-2" {...commonProps} />
+              </div>
+              <div className="col-span-6 mt-4">
+                <div className="aisle mb-2">RAMAL SUR</div>
+                <SubBlockCard sb={zone.subs[2]} colsClass="grid-cols-2" {...commonProps} />
+              </div>
+            </div>
+          </section>
+        )}
+
+        {curZone === 'B' && (
+          <section className="blueprint mt-2.5" aria-label="Corredor longitudinal de Zona B Agronomía">
+            <div className="aisle">
+              ← CORREDOR LONGITUDINAL AGRONOMÍA (26 m × 11 m) →
+            </div>
+            {/* B1 desplazado a la izquierda (ancho 10/12) */}
+            <div className="mr-8">
+              <SubBlockCard sb={zone.subs[0]} colsClass="grid-cols-4" {...commonProps} />
+            </div>
+            <div className="aisle">PASILLO CENTRAL ARBOLADO</div>
+            {/* B2 desplazado a la derecha (ancho 10/12) */}
+            <div className="ml-8">
+              <SubBlockCard sb={zone.subs[1]} colsClass="grid-cols-4" {...commonProps} />
+            </div>
+            {/* B3 isla compacta 2x2 abajo a la derecha */}
+            <div className="grid grid-cols-12 items-center gap-2">
+              <div className="col-span-5">
+                <div className="aisle">ACCESO SUR</div>
+              </div>
+              <div className="col-span-7">
+                <SubBlockCard sb={zone.subs[2]} colsClass="grid-cols-2" {...commonProps} />
+              </div>
+            </div>
+          </section>
+        )}
+
+        {curZone === 'C' && (
+          <section className="blueprint mt-2.5" aria-label="Patio en U de Zona C Postgrados">
+            {/* C3 cierra la U arriba a lo ancho */}
+            <SubBlockCard sb={zone.subs[2]} colsClass="grid-cols-4" {...commonProps} />
+            {/* Dos alas verticales largas (1 columna x 4 puestos cada una) con pasillo vertical en medio */}
+            <div className="grid grid-cols-12 items-stretch gap-2">
+              <div className="col-span-5">
+                <SubBlockCard sb={zone.subs[0]} colsClass="grid-cols-1" {...commonProps} />
+              </div>
+              <div className="col-span-2 flex items-center justify-center rounded-2xl border-2 border-dashed border-[#7FAEDB] bg-white/80 px-1 py-3 text-center text-[9.5px] font-black tracking-widest text-card [writing-mode:vertical-rl]">
+                PASILLO CENTRAL EN U (22 m)
+              </div>
+              <div className="col-span-5">
+                <SubBlockCard sb={zone.subs[1]} colsClass="grid-cols-1" {...commonProps} />
+              </div>
+            </div>
+            <div className="aisle">
+              ↑ ENTRADA SUR POSTGRADOS ↑
+            </div>
+          </section>
+        )}
+
+        {curZone === 'D' && (
+          <section className="blueprint mt-2.5" aria-label="Islas escalonadas de Zona D Bioclimático">
+            {/* Isla D1 arriba a la izquierda + entrada oriental a la derecha */}
+            <div className="grid grid-cols-12 items-center gap-2">
+              <div className="col-span-7">
+                <SubBlockCard sb={zone.subs[0]} colsClass="grid-cols-2" {...commonProps} />
+              </div>
+              <div className="col-span-5">
+                <div className="aisle py-4">
+                  ENTRADA ORIENTAL
+                  <br />
+                  (22 m × 18 m)
+                </div>
+              </div>
+            </div>
+            {/* Bahía central D2 ancha de 4 puestos */}
+            <SubBlockCard sb={zone.subs[1]} colsClass="grid-cols-4" {...commonProps} />
+            {/* Isla D3 abajo desplazada a la derecha */}
+            <div className="grid grid-cols-12 items-center gap-2">
+              <div className="col-span-5">
+                <div className="aisle py-3">PASILLO LATERAL</div>
+              </div>
+              <div className="col-span-7">
+                <SubBlockCard sb={zone.subs[2]} colsClass="grid-cols-2" {...commonProps} />
+              </div>
+            </div>
+          </section>
+        )}
+
+        {/* Panel del puesto seleccionado o de tu moto */}
+        {target && (
+          <section className="lg-card mt-3.5 rounded-[22px] p-4 text-white" aria-live="polite">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="font-display text-[28px] leading-none text-sun">{target.spot.id}</p>
+                <p className="mt-1 text-[12.5px] font-extrabold leading-snug text-white/90">
+                  {target.sub.title} · {target.spot.shade ? 'Cupo con sombra' : 'Cupo al sol'}
+                </p>
+              </div>
+              <span
+                className="whitespace-nowrap rounded-full px-3 py-1 text-[11.5px] font-black"
+                style={
+                  isMine
+                    ? { background: '#FFC200', color: '#141414' }
+                    : target.spot.free
+                      ? { background: '#22A45D', color: '#fff' }
+                      : { background: '#E5484D', color: '#fff' }
+                }
+              >
+                {isMine ? 'Tu moto aquí' : target.spot.free ? 'Libre' : target.spot.status === 'apartado' ? 'Apartado' : 'Ocupado'}
+              </span>
+            </div>
+
+            <button
+              type="button"
+              disabled={isMine || !target.spot.free}
+              onClick={() => reserve(target.spot.id)}
+              className="lg-btn-sun mt-3 flex h-[50px] w-full items-center justify-center gap-2 rounded-full text-[15.5px] font-black disabled:opacity-60 disabled:shadow-none"
+            >
+              <IconLock className="h-4 w-4" />
+              {isMine
+                ? `Tu moto está en ${target.spot.id}`
+                : target.spot.free
+                  ? `Apartar ${target.spot.id} · 10 min`
+                  : `Puesto ${target.spot.id} no disponible`}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setMapView(isMine ? 'moto' : 'campus')
+                go('mapas', 'tab')
+              }}
+              className="mt-2.5 flex h-[44px] w-full items-center justify-center gap-2 rounded-full border-[1.5px] border-white/65 bg-white/18 text-[13.5px] font-extrabold text-white shadow-[inset_0_1.5px_1px_rgba(255,255,255,0.5)] backdrop-blur-md"
+            >
+              <IconMap className="h-[15px] w-[15px]" />
+              {isMine ? 'Cómo llegar en el mapa del campus' : `Ubicar Zona ${zone.id} en el mapa del campus`}
+            </button>
+          </section>
+        )}
+
         <button
           type="button"
           onClick={openSheet}
-          className="lg-surface mt-3 flex h-[54px] w-full items-center justify-center gap-2.5 rounded-full border-[3px] border-card text-[16px] font-extrabold text-ink"
+          className="lg-surface mt-3 flex h-[50px] w-full items-center justify-center gap-2.5 rounded-full text-[15px] font-extrabold text-ink"
         >
-          <IconFlag className="h-[17px] w-[17px]" />
+          <IconFlag className="h-4 w-4" />
           Reportar estado de una zona
         </button>
-        <p className="mt-3 flex items-center justify-center gap-1.5 text-center text-[11.5px] font-bold text-ink/60">
-          <IconInfo className="h-[13px] w-[13px]" />
-          Toca una zona para ver sus cupos.
-          <IconDown className="h-[13px] w-[13px]" />
-        </p>
       </main>
     </Screen>
   )

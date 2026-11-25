@@ -3,14 +3,29 @@ import { persist } from 'zustand/middleware'
 import { useShallow } from 'zustand/react/shallow'
 import { CLASS_TIMES, RESERVATION_MINUTES, SIMULATED_NOW, createZones } from '../domain/data'
 import { findSpot, findSpotInfo, nearestZoneId, zoneStats } from '../domain/selectors'
+import {
+  fetchCupos,
+  fetchReportes,
+  insertReporteInDb,
+  isSupabaseConfigured,
+  subscribeRealtime,
+  supabase,
+  updateCupoInDb,
+  type CupoRow,
+  type ReporteRow,
+} from '../lib/supabase'
 import type {
   AlertRecord,
+  AuthUser,
   GuideSource,
   MapView,
   Parked,
   Pref,
+  Profile,
   Report,
   ReportState,
+  SpotStatus,
+  UserPos,
   Zone,
   ZoneId,
 } from '../domain/types'
@@ -34,7 +49,15 @@ interface ParkitState {
   alerts: AlertRecord[]
   toast: Toast | null
   sheetOpen: boolean
+  authUser: AuthUser | null
+  profile: Profile | null
+  userPos: UserPos
+  realtimeConnected: boolean
 
+  setAuthUser: (user: AuthUser | null) => void
+  setProfile: (profile: Profile) => void
+  setUserPos: (pos: UserPos) => void
+  logout: () => void
   setZone: (id: ZoneId) => void
   setPref: (pref: Pref) => void
   setClassAt: (mins: number) => void
@@ -52,25 +75,52 @@ interface ParkitState {
   showToast: (message: string) => void
   hideToast: () => void
   resetDemo: () => void
+  initRealtime: () => () => void
+  expireReservations: () => void
+  setSpotFromCamera: (spotId: string, status: SpotStatus) => Promise<void>
 }
 
 const initialParked = (): Parked => ({ zone: 'A', spotId: 'A-03', since: Date.now() - 135 * 60000 })
 
-function withSpotFree(zones: Record<ZoneId, Zone>, spotId: string, free: boolean) {
+function withSpotPatch(
+  zones: Record<ZoneId, Zone>,
+  spotId: string,
+  patch: { status: SpotStatus; reservedUntil?: number | null; userId?: string | null },
+) {
+  const free = patch.status === 'libre'
   const next = { ...zones }
   for (const zid of Object.keys(next) as ZoneId[]) {
     const zone = next[zid]
     if (!zone.spots.some((p) => p.id === spotId)) continue
+    const updateSpot = <T extends { id: string }>(p: T) =>
+      p.id === spotId
+        ? {
+            ...p,
+            free,
+            status: patch.status,
+            reservedUntil: patch.reservedUntil ?? null,
+            userId: patch.userId ?? null,
+          }
+        : p
     next[zid] = {
       ...zone,
-      spots: zone.spots.map((p) => (p.id === spotId ? { ...p, free } : p)),
+      spots: zone.spots.map(updateSpot),
       subs: zone.subs.map((sb) => ({
         ...sb,
-        spots: sb.spots.map((p) => (p.id === spotId ? { ...p, free } : p)),
+        spots: sb.spots.map(updateSpot),
       })),
     }
   }
   return next
+}
+
+function applyCupoRow(zones: Record<ZoneId, Zone>, row: CupoRow): Record<ZoneId, Zone> {
+  const reservedUntil = row.reservado_hasta ? new Date(row.reservado_hasta).getTime() : null
+  return withSpotPatch(zones, row.id, {
+    status: row.estado,
+    reservedUntil,
+    userId: row.usuario_id,
+  })
 }
 
 function applyReportToZone(zone: Zone, state: ReportState, shade: boolean, mineId?: string): Zone {
@@ -86,12 +136,17 @@ function applyReportToZone(zone: Zone, state: ReportState, shade: boolean, mineI
     ...sunny.slice(0, u).map((p) => p.id),
     ...(mineId ? [mineId] : []),
   ])
+  const mapSpot = (p: Zone['spots'][number]) => {
+    const isFree = freeSet.has(p.id)
+    const status: SpotStatus = isFree ? 'libre' : p.status === 'apartado' ? 'apartado' : 'ocupado'
+    return { ...p, free: isFree, status }
+  }
   return {
     ...zone,
-    spots: zone.spots.map((p) => ({ ...p, free: freeSet.has(p.id) })),
+    spots: zone.spots.map(mapSpot),
     subs: zone.subs.map((sb) => ({
       ...sb,
-      spots: sb.spots.map((p) => ({ ...p, free: freeSet.has(p.id) })),
+      spots: sb.spots.map(mapSpot),
     })),
   }
 }
@@ -114,7 +169,29 @@ export const useParkit = create<ParkitState>()(
       alerts: [],
       toast: null,
       sheetOpen: false,
+      authUser: null,
+      profile: null,
+      userPos: { x: 165, y: 175 },
+      realtimeConnected: false,
 
+      setAuthUser: (authUser) => set({ authUser, profile: null }),
+      setUserPos: (pos) =>
+        set({
+          userPos: {
+            x: Math.max(24, Math.min(326, Math.round(pos.x))),
+            y: Math.max(24, Math.min(326, Math.round(pos.y))),
+          },
+        }),
+      setProfile: (profile) =>
+        set((s) => ({
+          profile,
+          authUser: s.authUser ? { ...s.authUser, plate: profile.plate, name: profile.fullName } : s.authUser,
+          parked: s.profile ? s.parked : null,
+        })),
+      logout: () => {
+        if (supabase) void supabase.auth.signOut()
+        set({ authUser: null, profile: null })
+      },
       setZone: (id) => set({ curZone: id, chosen: null, inspected: null }),
       setPref: (pref) => set({ pref, chosen: null }),
       setClassAt: (mins) => set({ classAt: mins }),
@@ -130,7 +207,11 @@ export const useParkit = create<ParkitState>()(
           return
         }
         if (!spot.free) {
-          get().showToast(`Cupo ${id} ocupado. Elige uno libre.`)
+          get().showToast(
+            spot.status === 'apartado'
+              ? `Cupo ${id} apartado temporalmente. Elige uno verde.`
+              : `Cupo ${id} ocupado. Elige uno libre.`,
+          )
           return
         }
         set((s) => ({ chosen: s.chosen === id ? null : id, inspected: id }))
@@ -146,6 +227,7 @@ export const useParkit = create<ParkitState>()(
         }
         set({ inspected: id, chosen: null, curZone: spot.zone })
         if (parked?.spotId === id) get().showToast(`Tu moto ya está en ${id}.`)
+        else if (spot.status === 'apartado') get().showToast(`Minibloque ${id} apartado temporalmente.`)
         else get().showToast(`Minibloque ${id} ocupado. Elige uno verde.`)
       },
 
@@ -158,20 +240,39 @@ export const useParkit = create<ParkitState>()(
       },
 
       reserve: (spotId) => {
-        const { zones, parked } = get()
+        const { zones, parked, authUser, profile } = get()
         const spot = findSpot(zones, spotId)
         if (!spot || !spot.free) {
           get().showToast('Ese cupo ya no está libre.')
           return
         }
+        const reservedUntil = Date.now() + RESERVATION_MINUTES * 60_000
         let next = zones
-        if (parked) next = withSpotFree(next, parked.spotId, true)
-        next = withSpotFree(next, spotId, false)
+        if (parked) {
+          next = withSpotPatch(next, parked.spotId, { status: 'libre', reservedUntil: null, userId: null })
+          void updateCupoInDb(parked.spotId, {
+            estado: 'libre',
+            reservado_hasta: null,
+            usuario_id: null,
+            placa: null,
+          })
+        }
+        next = withSpotPatch(next, spotId, {
+          status: 'apartado',
+          reservedUntil,
+          userId: authUser?.id ?? 'local',
+        })
         set({
           zones: next,
           parked: { zone: spot.zone, spotId, since: Date.now() },
           chosen: null,
           inspected: spotId,
+        })
+        void updateCupoInDb(spotId, {
+          estado: 'apartado',
+          reservado_hasta: new Date(reservedUntil).toISOString(),
+          usuario_id: authUser?.id ?? null,
+          placa: profile?.plate ?? authUser?.plate ?? null,
         })
         get().showToast(`Cupo ${spotId} apartado por ${RESERVATION_MINUTES} minutos.`)
       },
@@ -180,16 +281,22 @@ export const useParkit = create<ParkitState>()(
         const { parked, zones } = get()
         if (!parked) return
         set({
-          zones: withSpotFree(zones, parked.spotId, true),
+          zones: withSpotPatch(zones, parked.spotId, { status: 'libre', reservedUntil: null, userId: null }),
           parked: null,
           chosen: null,
           inspected: null,
+        })
+        void updateCupoInDb(parked.spotId, {
+          estado: 'libre',
+          reservado_hasta: null,
+          usuario_id: null,
+          placa: null,
         })
         get().showToast(`Cupo ${parked.spotId} liberado.`)
       },
 
       sendReport: (zoneId, state, shade) => {
-        const { zones, parked, chosen } = get()
+        const { zones, parked, chosen, authUser } = get()
         const zone = zones[zoneId]
         const updated = applyReportToZone(zone, state, shade, parked?.spotId)
         const stillFree = (id: string | null) => (id ? findSpot({ ...zones, [zoneId]: updated }, id)?.free ?? false : false)
@@ -202,6 +309,18 @@ export const useParkit = create<ParkitState>()(
           chosen: stillFree(chosen) ? chosen : null,
           sheetOpen: false,
         })
+        void insertReporteInDb(zoneId, state, shade, authUser?.id)
+        for (const sp of updated.spots) {
+          if (sp.id === parked?.spotId) continue
+          const prev = zone.spots.find((p) => p.id === sp.id)
+          if (prev && prev.status !== sp.status) {
+            void updateCupoInDb(sp.id, {
+              estado: sp.status,
+              reservado_hasta: null,
+              usuario_id: null,
+            })
+          }
+        }
         get().showToast(`Gracias. ${zone.name} se actualizó con tu reporte.`)
       },
 
@@ -230,10 +349,146 @@ export const useParkit = create<ParkitState>()(
           alerts: [],
           toast: null,
         }),
+
+      expireReservations: () => {
+        const now = Date.now()
+        const { zones, parked } = get()
+        let next = zones
+        let changed = false
+        let expiredMine = false
+        for (const zid of Object.keys(zones) as ZoneId[]) {
+          for (const sp of zones[zid].spots) {
+            if (sp.status === 'apartado' && sp.reservedUntil && sp.reservedUntil <= now) {
+              next = withSpotPatch(next, sp.id, { status: 'libre', reservedUntil: null, userId: null })
+              changed = true
+              if (parked?.spotId === sp.id) expiredMine = true
+              void updateCupoInDb(sp.id, {
+                estado: 'libre',
+                reservado_hasta: null,
+                usuario_id: null,
+                placa: null,
+              })
+            }
+          }
+        }
+        if (changed) {
+          set({
+            zones: next,
+            parked: expiredMine ? null : parked,
+          })
+          if (expiredMine) {
+            get().showToast('Tu reserva de 10 minutos expiró y el cupo volvió a estar libre.')
+          }
+        }
+      },
+
+      setSpotFromCamera: async (spotId, status) => {
+        const { zones } = get()
+        const cur = findSpot(zones, spotId)
+        if (!cur || cur.status === status) return
+        set({
+          zones: withSpotPatch(zones, spotId, {
+            status,
+            reservedUntil: null,
+            userId: status === 'ocupado' ? 'camara-sensor' : null,
+          }),
+        })
+        await updateCupoInDb(spotId, {
+          estado: status,
+          reservado_hasta: null,
+          usuario_id: status === 'ocupado' ? 'camara-sensor' : null,
+        })
+      },
+
+      initRealtime: () => {
+        if (!isSupabaseConfigured || !supabase) return () => {}
+        let active = true
+
+        void supabase.auth.getSession().then(({ data }) => {
+          if (!active) return
+          const user = data.session?.user
+          const email = user?.email?.toLowerCase()
+          if (user && email && !get().authUser) {
+            if (email.endsWith('@correo.unicordoba.edu.co')) {
+              const avatarUrl =
+                (user.user_metadata?.avatar_url as string | undefined) ??
+                (user.user_metadata?.picture as string | undefined)
+              set({
+                authUser: {
+                  id: user.id,
+                  role: 'student',
+                  email,
+                  name: (user.user_metadata?.full_name as string | undefined) ?? email.split('@')[0],
+                  avatarUrl,
+                },
+              })
+            } else {
+              void supabase?.auth.signOut()
+              get().showToast('Solo se permite Google con correo @correo.unicordoba.edu.co.')
+            }
+          }
+        })
+
+        void (async () => {
+          const [cupos, reportes] = await Promise.all([fetchCupos(), fetchReportes()])
+          if (!active) return
+          if (cupos && cupos.length > 0) {
+            let next = get().zones
+            for (const row of cupos) {
+              next = applyCupoRow(next, row)
+            }
+            set({ zones: next, realtimeConnected: true })
+          }
+          if (reportes && reportes.length > 0) {
+            set({
+              reports: reportes.map((r: ReporteRow) => ({
+                id: r.id,
+                zone: r.zona_id,
+                state: r.estado_reportado,
+                shade: r.hay_sombra,
+                at: new Date(r.creado_en).getTime(),
+              })),
+            })
+          }
+        })()
+
+        const unsub = subscribeRealtime(
+          (row) => {
+            set((s) => ({
+              zones: applyCupoRow(s.zones, row),
+              realtimeConnected: true,
+            }))
+          },
+          (row) => {
+            set((s) => ({
+              reports: [
+                {
+                  id: row.id,
+                  zone: row.zona_id,
+                  state: row.estado_reportado,
+                  shade: row.hay_sombra,
+                  at: new Date(row.creado_en).getTime(),
+                },
+                ...s.reports.filter((r) => r.id !== row.id),
+              ].slice(0, 30),
+            }))
+          },
+        )
+
+        const timer = window.setInterval(() => {
+          get().expireReservations()
+        }, 15_000)
+
+        return () => {
+          active = false
+          window.clearInterval(timer)
+          unsub?.()
+        }
+      },
     }),
     {
       name: 'parkit-v1',
-      version: 1,
+      version: 3,
       partialize: (s) => ({
         zones: s.zones,
         parked: s.parked,
@@ -241,6 +496,8 @@ export const useParkit = create<ParkitState>()(
         classAt: s.classAt,
         reports: s.reports,
         alerts: s.alerts,
+        authUser: s.authUser,
+        profile: s.profile,
       }),
     },
   ),

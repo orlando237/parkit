@@ -24,33 +24,28 @@ jobs:
       run: npm ci
 
     - name: Build web assets
+      env:
+        VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL || 'https://khmjxoxewqfkyyxfnjba.supabase.co' }}
+        VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY || 'sb_publishable_4cevbr82hFPJ2JFvoyJEAw_zsvd8prv' }}
       run: npm run build
 
-    - name: Setup JDK 17
+    - name: Setup JDK 21
       uses: actions/setup-java@v4
       with:
-        java-version: '17'
+        java-version: '21'
         distribution: 'temurin'
         cache: gradle
 
     - name: Setup Android SDK
-      uses: reactivecircus/android-emulator-runner@v2
-      with:
-        api-level: 34
-        build-tools: 34.0.0
-        script: echo "SDK ready"
+      uses: android-actions/setup-android@v3
 
-    - name: Copy web assets
-      run: |
-        mkdir -p android/app/src/main/assets/public
-        rm -rf android/app/src/main/assets/public/*
-        cp -r dist/* android/app/src/main/assets/public/
+    - name: Sync Capacitor Android
+      run: npx cap copy android
 
     - name: Build APK
       working-directory: ./android
       run: |
         chmod +x gradlew
-        export ANDROID_HOME=/usr/local/share/android-sdk
         ./gradlew assembleDebug --no-daemon
 
     - name: Upload APK

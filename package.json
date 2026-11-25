@@ -13,6 +13,7 @@
     "@capacitor/android": "^8.6.2",
     "@capacitor/core": "^8.6.2",
     "@react-three/fiber": "^9.8.2",
+    "@supabase/supabase-js": "^2.119.2",
     "framer-motion": "^12.43.0",
     "lucide-react": "^1.77.0",
     "motion": "^12.43.0",

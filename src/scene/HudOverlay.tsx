@@ -12,7 +12,7 @@ interface HudOverlayProps {
   onReset: () => void
 }
 
-export function HudOverlay({ target, zoneName, running, finished, totalMeters, totalMinutes, onStart, onReset }: HudOverlayProps) {
+export function HudOverlay({ target, zoneName, running, finished, totalMeters, totalMinutes, onStart }: HudOverlayProps) {
   const meters = useGuide((s) => s.meters)
   const minutes = useGuide((s) => s.minutes)
 
@@ -36,9 +36,6 @@ export function HudOverlay({ target, zoneName, running, finished, totalMeters, t
         <div className="arrival-banner" role="status">
           <span className="text-[14px] font-black">¡Llegaste a tu cupo {target.id}!</span>
           <span className="text-[12px] font-extrabold text-white/95">{zoneName}</span>
-          <button type="button" onClick={onReset} className="mt-1 h-[34px] rounded-full border-2 border-white bg-white/20 text-[13px] font-black text-white">
-            Recorrer otra vez
-          </button>
         </div>
       ) : (
         !running && (

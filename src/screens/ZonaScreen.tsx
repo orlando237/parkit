@@ -110,7 +110,17 @@ export function ZonaScreen() {
                   {sb.spots.map((p) => {
                     const state = miniState(p, inspected, chosen, parked?.spotId)
                     const label =
-                      state === 'selected' ? 'Elegido' : state === 'mine' ? 'Tu moto' : p.free ? (p.shade ? 'Sombra' : 'Sol') : 'Ocupado'
+                      state === 'selected'
+                        ? 'Elegido'
+                        : state === 'mine'
+                          ? 'Tu moto'
+                          : p.free
+                            ? p.shade
+                              ? 'Sombra'
+                              : 'Sol'
+                            : p.status === 'apartado'
+                              ? 'Apartado'
+                              : 'Ocupado'
                     return (
                       <button
                         key={p.id}

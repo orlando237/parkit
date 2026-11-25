@@ -1,5 +1,22 @@
 import { GEO, ORDER } from './data'
-import type { Parked, Pref, Spot, SpotInfo, Zone, ZoneId } from './types'
+import type { Parked, Pref, Spot, SpotInfo, UserPos, Zone, ZoneId } from './types'
+
+export const DEFAULT_USER_POS: UserPos = { x: 165, y: 175 }
+
+export function distanceMeters(from: UserPos, to: { x: number; y: number }): number {
+  const dx = from.x - to.x
+  const dy = from.y - to.y
+  return Math.max(5, Math.round(Math.hypot(dx, dy) * 0.45))
+}
+
+export function zoneDistanceMeters(zoneId: ZoneId, userPos: UserPos = DEFAULT_USER_POS): number {
+  const g = GEO[zoneId]
+  return distanceMeters(userPos, { x: g.cx, y: g.cy })
+}
+
+export function walkMinutesFromMeters(meters: number): number {
+  return Math.max(1, Math.round(meters / 55))
+}
 
 export interface Stats {
   free: number
@@ -36,16 +53,24 @@ export function zoneMetric(zone: Zone, pref: Pref) {
   return pref === 'sombra' ? s.shade : s.sun
 }
 
-export function sortedZones(zones: Record<ZoneId, Zone>, pref: Pref): ZoneId[] {
+export function sortedZones(zones: Record<ZoneId, Zone>, pref: Pref, userPos?: UserPos): ZoneId[] {
   const rank = (id: ZoneId) => {
     const z = zones[id]
     if (zoneMetric(z, pref) > 0) return 0
     return zoneStats(z).free > 0 ? 1 : 2
   }
-  return [...ORDER].sort((a, b) => rank(a) - rank(b) || zones[a].dm - zones[b].dm)
+  return [...ORDER].sort((a, b) => {
+    const r = rank(a) - rank(b)
+    if (r !== 0) return r
+    if (userPos) return zoneDistanceMeters(a, userPos) - zoneDistanceMeters(b, userPos)
+    return zones[a].dm - zones[b].dm
+  })
 }
 
-export function nearestZoneId(zones: Record<ZoneId, Zone>): ZoneId {
+export function nearestZoneId(zones: Record<ZoneId, Zone>, userPos?: UserPos): ZoneId {
+  if (userPos) {
+    return [...ORDER].sort((a, b) => zoneDistanceMeters(a, userPos) - zoneDistanceMeters(b, userPos))[0]
+  }
   return [...ORDER].sort((a, b) => zones[a].dm - zones[b].dm)[0]
 }
 

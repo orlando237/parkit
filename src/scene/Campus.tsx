@@ -1,61 +1,79 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
-import { GEO, ORDER } from '../domain/data'
+import { ORDER } from '../domain/data'
+import { useGuide } from '../store/useGuide'
+import {
+  CAMPUS_BLOCKS,
+  GRID_BUSHES,
+  GRID_N,
+  GRID_TREES,
+  ZONE_GRID,
+  isPathCell,
+  type CampusBlock,
+  type GridCell,
+} from '../components/CampusMap2D'
 import type { ZoneId } from '../domain/types'
 import type { SceneTarget } from './GuideScene'
+
+export const TILE_3D = 12
+const WORLD_SIZE = GRID_N * TILE_3D
+
+export function cellCenter3D(c: number, r: number): { x: number; z: number } {
+  return {
+    x: (c + 0.5) * TILE_3D,
+    z: (r + 0.5) * TILE_3D,
+  }
+}
 
 interface CampusProps {
   target: SceneTarget
   occupied: Record<ZoneId, number[]>
   freeCounts: Record<ZoneId, number>
   isMine: boolean
+  routeCells: GridCell[]
 }
 
-const ZONE_STYLE: Record<ZoneId, { name: string; roof: string }> = {
-  A: { name: 'Zona A · Informática', roof: '#FFC200' },
-  B: { name: 'Zona B · Agronomía', roof: '#FFFFFF' },
-  C: { name: 'Zona C · Postgrados', roof: '#141414' },
-  D: { name: 'Zona D · Bioclimático', roof: '#7FAEDB' },
+const ZONE_NAMES: Record<ZoneId, string> = {
+  A: 'P-A · Informática',
+  B: 'P-B · Agronomía',
+  C: 'P-C · Postgrados',
+  D: 'P-D · Bioclimático',
 }
-
-const BUILDINGS = [
-  { name: 'Lab. Molecular (B43)', x: 34, z: 18, w: 32, d: 20, h: 18, roof: '#7FAEDB' },
-  { name: 'Lab. Fotointerpretación', x: 115, z: 18, w: 34, d: 20, h: 16, roof: '#7FAEDB' },
-  { name: 'Bloque 26', x: 212, z: 148, w: 50, d: 18, h: 21, roof: '#22A45D' },
-  { name: 'Bienestar Universitario', x: 42, z: 198, w: 38, d: 20, h: 17, roof: '#7FAEDB' },
-  { name: 'Edificio Azul', x: 222, z: 200, w: 44, d: 22, h: 23, roof: '#2F69A6' },
-  { name: 'Edificio Administrativo', x: 112, z: 228, w: 38, d: 22, h: 22, roof: '#7FAEDB' },
-  { name: 'CINTIA', x: 112, z: 310, w: 36, d: 20, h: 17, roof: '#7FAEDB' },
-]
-
-const KIOSKS = [
-  { name: 'Zona de Estudio #3', x: 312, z: 148 },
-  { name: 'Zona de Estudio #5', x: 206, z: 336 },
-  { name: 'Zona de Estudio #2', x: 18, z: 270 },
-]
-
-const TREES = [
-  { x: 144, z: 120, s: 0.9 },
-  { x: 186, z: 115, s: 1 },
-  { x: 186, z: 220, s: 0.9 },
-  { x: 144, z: 245, s: 0.85 },
-]
 
 function Tree({ scale = 1 }: { scale?: number }) {
   return (
     <group>
-      <mesh position={[0, 3.5 * scale, 0]}>
-        <cylinderGeometry args={[1.1 * scale, 1.5 * scale, 7 * scale, 7]} />
+      <mesh position={[0, 2.8 * scale, 0]}>
+        <cylinderGeometry args={[0.9 * scale, 1.2 * scale, 5.6 * scale, 7]} />
         <meshLambertMaterial color="#6D4C3D" />
       </mesh>
-      <mesh position={[0, 8.5 * scale, 0]} scale={[1, 0.82, 1]}>
-        <sphereGeometry args={[5.2 * scale, 9, 7]} />
+      <mesh position={[0, 6.8 * scale, 0]} scale={[1, 0.85, 1]}>
+        <sphereGeometry args={[4.2 * scale, 9, 7]} />
         <meshLambertMaterial color="#22A45D" />
       </mesh>
-      <mesh position={[0.8 * scale, 12.2 * scale, -0.5 * scale]}>
-        <sphereGeometry args={[3.8 * scale, 8, 6]} />
-        <meshLambertMaterial color="#47B876" />
+      <mesh position={[0.6 * scale, 9.6 * scale, -0.4 * scale]}>
+        <sphereGeometry args={[3.0 * scale, 8, 6]} />
+        <meshLambertMaterial color="#52C47E" />
+      </mesh>
+    </group>
+  )
+}
+
+function Bush({ scale = 1 }: { scale?: number }) {
+  return (
+    <group>
+      <mesh position={[0, 1.5 * scale, 0]}>
+        <sphereGeometry args={[2.1 * scale, 8, 6]} />
+        <meshLambertMaterial color="#38A169" />
+      </mesh>
+      <mesh position={[1.4 * scale, 1.2 * scale, 0.6 * scale]}>
+        <sphereGeometry args={[1.6 * scale, 7, 6]} />
+        <meshLambertMaterial color="#2F855A" />
+      </mesh>
+      <mesh position={[-1.3 * scale, 1.2 * scale, -0.5 * scale]}>
+        <sphereGeometry args={[1.7 * scale, 7, 6]} />
+        <meshLambertMaterial color="#48BB78" />
       </mesh>
     </group>
   )
@@ -63,230 +81,169 @@ function Tree({ scale = 1 }: { scale?: number }) {
 
 function ParkedBike({ color = '#141414' }: { color?: string }) {
   return (
-    <group>
-      <mesh position={[0, 2.2, -3.5]} rotation={[0, 0, Math.PI / 2]}>
-        <cylinderGeometry args={[2.2, 2.2, 1.6, 10]} />
+    <group scale={0.7}>
+      <mesh position={[0, 2.2, -3.2]} rotation={[0, 0, Math.PI / 2]}>
+        <cylinderGeometry args={[2.0, 2.0, 1.4, 10]} />
         <meshLambertMaterial color="#141414" />
       </mesh>
-      <mesh position={[0, 2.2, 3.5]} rotation={[0, 0, Math.PI / 2]}>
-        <cylinderGeometry args={[2.2, 2.2, 1.6, 10]} />
+      <mesh position={[0, 2.2, 3.2]} rotation={[0, 0, Math.PI / 2]}>
+        <cylinderGeometry args={[2.0, 2.0, 1.4, 10]} />
         <meshLambertMaterial color="#141414" />
       </mesh>
-      <mesh position={[0, 4.2, 0]}>
-        <boxGeometry args={[3, 3, 8.2]} />
+      <mesh position={[0, 4.0, 0]}>
+        <boxGeometry args={[2.8, 2.8, 7.6]} />
         <meshLambertMaterial color={color} />
-      </mesh>
-      <mesh position={[0, 6.1, -1]}>
-        <boxGeometry args={[2.6, 1.2, 4.2]} />
-        <meshLambertMaterial color="#141414" />
       </mesh>
     </group>
   )
 }
 
-function ParkingZone({ id, occupied, target, isMine }: { id: ZoneId; occupied: number[]; target: SceneTarget; isMine: boolean }) {
-  const g = GEO[id]
-  const w = g.w
-  const d = g.h
-  const isTargetZone = target.zone === id
-  const layout = [
-    { zCenter: -29, xStart: -w / 2 + 16, count: 3, shaded: true },
-    { zCenter: -29, xStart: 8, count: 3, shaded: true },
-    { zCenter: 29, xStart: -w / 2 + 16, count: 6, shaded: false },
-  ]
-  const entranceSide = g.cx < 165 ? w / 2 - 3 : -w / 2 + 3
-  let counter = 0
+function Block3D({ b }: { b: CampusBlock }) {
+  const bx = (b.c + b.w / 2) * TILE_3D
+  const bz = (b.r + b.h / 2) * TILE_3D
+  const bw = b.w * TILE_3D - 2
+  const bd = b.h * TILE_3D - 2
 
-  return (
-    <group position={[g.cx, 0, g.cy]}>
-      <mesh position={[0, 0.6, 0]}>
-        <boxGeometry args={[w, 1.2, d]} />
-        <meshLambertMaterial color="#FFFFFF" />
-      </mesh>
-      <mesh position={[0, 0.65, 0]}>
-        <boxGeometry args={[w - 4, 1.3, d - 4]} />
-        <meshLambertMaterial color="#BFD6EC" />
-      </mesh>
-      <mesh position={[0, 0.68, 0]}>
-        <boxGeometry args={[w - 8, 1.36, 18]} />
-        <meshBasicMaterial color="#EAF2FA" />
-      </mesh>
-      {Array.from({ length: Math.floor((w - 28) / 14) + 1 }).map((_, i) => (
-        <mesh key={i} position={[-w / 2 + 14 + i * 14, 0.7, 0]}>
-          <boxGeometry args={[6, 1.4, 1.6]} />
+  if (b.kind === 'sport') {
+    const isSoccer = b.label.includes('Fútbol')
+    const courtColor = isSoccer ? '#74C365' : '#60A5FA'
+    return (
+      <group position={[bx, 0.15, bz]}>
+        <mesh position={[0, 0.25, 0]}>
+          <boxGeometry args={[bw, 0.5, bd]} />
+          <meshLambertMaterial color="#FFFFFF" />
+        </mesh>
+        <mesh position={[0, 0.45, 0]}>
+          <boxGeometry args={[bw - 2, 0.55, bd - 2]} />
+          <meshLambertMaterial color={courtColor} />
+        </mesh>
+        {/* Línea media */}
+        <mesh position={[0, 0.78, 0]}>
+          <boxGeometry args={[bw - 4, 0.12, 0.8]} />
           <meshBasicMaterial color="#FFFFFF" />
         </mesh>
-      ))}
-      <mesh position={[entranceSide, 9, -10.5]}>
-        <boxGeometry args={[2.6, 17, 2.6]} />
+        {/* Círculo central */}
+        <mesh position={[0, 0.78, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+          <ringGeometry args={[4.2, 5.0, 20]} />
+          <meshBasicMaterial color="#FFFFFF" side={THREE.DoubleSide} />
+        </mesh>
+        {/* Arcos 3D en ambos extremos */}
+        {[-bd / 2 + 2.5, bd / 2 - 2.5].map((gz, idx) => (
+          <group key={idx} position={[0, 2.4, gz]}>
+            <mesh position={[-4.5, 0, 0]}>
+              <cylinderGeometry args={[0.35, 0.35, 4.2, 6]} />
+              <meshBasicMaterial color="#FFFFFF" />
+            </mesh>
+            <mesh position={[4.5, 0, 0]}>
+              <cylinderGeometry args={[0.35, 0.35, 4.2, 6]} />
+              <meshBasicMaterial color="#FFFFFF" />
+            </mesh>
+            <mesh position={[0, 2.1, 0]}>
+              <boxGeometry args={[9.6, 0.6, 0.6]} />
+              <meshBasicMaterial color="#FFFFFF" />
+            </mesh>
+          </group>
+        ))}
+      </group>
+    )
+  }
+
+  const bh = 15
+  return (
+    <group position={[bx, 0.2, bz]}>
+      <mesh position={[0, 0.8, 0]}>
+        <boxGeometry args={[bw + 1.5, 1.6, bd + 1.5]} />
+        <meshLambertMaterial color="#FFFFFF" />
+      </mesh>
+      <mesh position={[0, bh / 2 + 1, 0]}>
+        <boxGeometry args={[bw, bh, bd]} />
+        <meshLambertMaterial color="#CBD8E6" />
+      </mesh>
+      {/* Franjas de ventanas como en el bloque */}
+      <mesh position={[0, 5.5, 0]}>
+        <boxGeometry args={[bw + 0.4, 1.8, bd + 0.4]} />
         <meshLambertMaterial color="#22528A" />
       </mesh>
-      <mesh position={[entranceSide, 9, 10.5]}>
-        <boxGeometry args={[2.6, 17, 2.6]} />
+      <mesh position={[0, 10.5, 0]}>
+        <boxGeometry args={[bw + 0.4, 1.8, bd + 0.4]} />
         <meshLambertMaterial color="#22528A" />
       </mesh>
-      <mesh position={[entranceSide, 18.2, 0]}>
-        <boxGeometry args={[3.6, 3.6, 25]} />
-        <meshLambertMaterial color={ZONE_STYLE[id].roof} />
+      <mesh position={[0, bh + 1.4, 0]}>
+        <boxGeometry args={[bw + 1.2, 1.2, bd + 1.2]} />
+        <meshLambertMaterial color="#9FB6CE" />
+      </mesh>
+    </group>
+  )
+}
+
+function ZoneLot3D({
+  id,
+  occupied,
+  target,
+  isMine,
+}: {
+  id: ZoneId
+  occupied: number[]
+  target: SceneTarget
+  isMine: boolean
+}) {
+  const zg = ZONE_GRID[id]
+  const w = zg.w * TILE_3D - 2
+  const d = zg.h * TILE_3D - 2
+  const cx = (zg.c0 + zg.w / 2) * TILE_3D
+  const cz = (zg.r0 + zg.h / 2) * TILE_3D
+  const isTargetZone = target.zone === id
+
+  const cols = 4
+  const rows = 3
+  const cellW = (w - 6) / cols
+  const cellD = (d - 6) / rows
+
+  return (
+    <group position={[cx, 0.2, cz]}>
+      {/* Plataforma blanca con borde azul o amarillo */}
+      <mesh position={[0, 0.4, 0]}>
+        <boxGeometry args={[w, 0.8, d]} />
+        <meshLambertMaterial color={isTargetZone ? '#FFC200' : '#22528A'} />
+      </mesh>
+      <mesh position={[0, 0.55, 0]}>
+        <boxGeometry args={[w - 2.4, 0.9, d - 2.4]} />
+        <meshLambertMaterial color="#FFFFFF" />
+      </mesh>
+      {/* Techo de sombra parcial */}
+      <mesh position={[0, 11.5, -d * 0.16]}>
+        <boxGeometry args={[w - 4, 0.9, d * 0.55]} />
+        <meshLambertMaterial color="#3B76B1" transparent opacity={0.85} />
       </mesh>
 
-      {layout.map((sb, sbi) => {
-        const spacing = 15.5
-        const sbWidth = sb.count * spacing + 4
-        const sbCenterX = sb.xStart + ((sb.count - 1) * spacing) / 2
+      {Array.from({ length: 12 }).map((_, idx) => {
+        const col = idx % cols
+        const row = Math.floor(idx / cols)
+        const sx = -w / 2 + 3 + cellW * (col + 0.5)
+        const sz = -d / 2 + 3 + cellD * (row + 0.5)
+        const isSpotTarget = isTargetZone && idx === target.index
+        const isOcc = !isSpotTarget && occupied.includes(idx)
         return (
-          <group key={sbi}>
-            <mesh position={[sbCenterX, 0.85, sb.zCenter]}>
-              <boxGeometry args={[sbWidth, 1.5, 25]} />
-              <meshLambertMaterial color="#FFFFFF" />
+          <group key={idx} position={[sx, 0.65, sz]}>
+            <mesh position={[0, 0.4, 0]}>
+              <boxGeometry args={[cellW - 1.4, 0.8, cellD - 1.6]} />
+              <meshLambertMaterial
+                color={isSpotTarget ? '#FFC200' : isOcc ? '#E5484D' : '#22A45D'}
+              />
             </mesh>
-            {sb.shaded && (
-              <>
-                <mesh position={[sbCenterX - sbWidth / 2 + 3, 9.5, sb.zCenter - 9.5]}>
-                  <cylinderGeometry args={[0.9, 0.9, 17.5, 6]} />
-                  <meshLambertMaterial color="#22528A" />
-                </mesh>
-                <mesh position={[sbCenterX + sbWidth / 2 - 3, 9.5, sb.zCenter - 9.5]}>
-                  <cylinderGeometry args={[0.9, 0.9, 17.5, 6]} />
-                  <meshLambertMaterial color="#22528A" />
-                </mesh>
-                <mesh position={[sbCenterX, 18.5, sb.zCenter]} rotation={[0.05, 0, 0]}>
-                  <boxGeometry args={[sbWidth + 1, 1.2, 25]} />
-                  <meshLambertMaterial color="#3B76B1" transparent opacity={0.9} />
-                </mesh>
-              </>
+            {isSpotTarget && isMine && (
+              <group position={[0, 0.9, 0]}>
+                <ParkedBike color="#22528A" />
+              </group>
             )}
-            {Array.from({ length: sb.count }).map((_, i) => {
-              const idx = counter++
-              const miniX = sb.xStart + i * spacing
-              const isTarget = isTargetZone && idx === target.index
-              const isOccupied = !isTarget && occupied.includes(idx)
-              return (
-                <group key={idx} position={[miniX, 0, sb.zCenter]}>
-                  {isTarget ? (
-                    <>
-                      <mesh position={[0, 0.95, 0]}>
-                        <boxGeometry args={[13.4, 1.65, 21.8]} />
-                        <meshBasicMaterial color="#141414" />
-                      </mesh>
-                      <mesh position={[0, 1.02, 0]}>
-                        <boxGeometry args={[11.6, 1.8, 19.8]} />
-                        <meshBasicMaterial color="#FFC200" />
-                      </mesh>
-                      <mesh position={[0, 2, -7.2]}>
-                        <boxGeometry args={[7.8, 0.8, 1.6]} />
-                        <meshBasicMaterial color="#141414" />
-                      </mesh>
-                      {isMine && (
-                        <group position={[0, 1.7, 0]}>
-                          <ParkedBike color="#22528A" />
-                        </group>
-                      )}
-                    </>
-                  ) : (
-                    <>
-                      <mesh position={[0, 0.95, 0]}>
-                        <boxGeometry args={[11.8, 1.7, 19.5]} />
-                        <meshLambertMaterial color={isOccupied ? '#E5484D' : '#22A45D'} />
-                      </mesh>
-                      <mesh position={[0, 1.9, -6.5]}>
-                        <boxGeometry args={[7.5, 0.7, 1.5]} />
-                        <meshLambertMaterial color="#FFFFFF" />
-                      </mesh>
-                      {isOccupied && idx % 2 === 0 && (
-                        <group position={[0, 1.7, 0]}>
-                          <ParkedBike />
-                        </group>
-                      )}
-                    </>
-                  )}
-                </group>
-              )
-            })}
+            {isOcc && idx % 2 === 0 && (
+              <group position={[0, 0.9, 0]}>
+                <ParkedBike />
+              </group>
+            )}
           </group>
         )
       })}
-      <group position={[-w / 2 + 5, 0.5, -d / 2 + 6]}>
-        <Tree scale={0.95} />
-      </group>
-      <group position={[w / 2 - 5, 0.5, -d / 2 + 6]}>
-        <Tree scale={0.85} />
-      </group>
-    </group>
-  )
-}
-
-function Building({ b }: { b: (typeof BUILDINGS)[number] }) {
-  const floors = b.h >= 20 ? 3 : 2
-  const step = (b.h - 4) / floors
-  return (
-    <group position={[b.x, 0.2, b.z]}>
-      <mesh position={[0, 1.1, 0]}>
-        <boxGeometry args={[b.w + 2.4, 2.2, b.d + 2.4]} />
-        <meshLambertMaterial color="#FFFFFF" />
-      </mesh>
-      <mesh position={[0, b.h / 2 + 1.5, 0]}>
-        <boxGeometry args={[b.w, b.h, b.d]} />
-        <meshLambertMaterial color="#A9CAE8" />
-      </mesh>
-      {Array.from({ length: floors }).map((_, f) => (
-        <mesh key={f} position={[0, 5.2 + f * step, 0]}>
-          <boxGeometry args={[b.w + 0.6, 2.1, b.d + 0.6]} />
-          <meshLambertMaterial color="#22528A" />
-        </mesh>
-      ))}
-      <mesh position={[0, 3.2, 0]}>
-        <boxGeometry args={[5.5, 4.2, b.d + 1]} />
-        <meshLambertMaterial color="#141414" />
-      </mesh>
-      <mesh position={[0, 5.6, 0]}>
-        <boxGeometry args={[9, 1.2, b.d + 3.6]} />
-        <meshLambertMaterial color="#FFFFFF" />
-      </mesh>
-      <mesh position={[0, b.h + 2, 0]}>
-        <boxGeometry args={[b.w + 2.2, 1.4, b.d + 2.2]} />
-        <meshLambertMaterial color="#FFFFFF" />
-      </mesh>
-      <mesh position={[0, b.h + 3.4, 0]}>
-        <boxGeometry args={[b.w - 1.5, 2.2, b.d - 1.5]} />
-        <meshLambertMaterial color={b.roof} />
-      </mesh>
-      <mesh position={[b.w * 0.18, b.h + 5.2, 0]}>
-        <boxGeometry args={[b.w * 0.32, 3.2, b.d * 0.4]} />
-        <meshLambertMaterial color="#FFFFFF" />
-      </mesh>
-    </group>
-  )
-}
-
-function Kiosk({ k }: { k: (typeof KIOSKS)[number] }) {
-  const w = 26
-  const d = 24
-  return (
-    <group position={[k.x, 0.2, k.z]}>
-      <mesh position={[0, 1, 0]}>
-        <boxGeometry args={[w, 2, d]} />
-        <meshLambertMaterial color="#FFFFFF" />
-      </mesh>
-      {[
-        [-w / 2 + 3.5, -d / 2 + 3.5],
-        [w / 2 - 3.5, -d / 2 + 3.5],
-        [-w / 2 + 3.5, d / 2 - 3.5],
-        [w / 2 - 3.5, d / 2 - 3.5],
-      ].map(([x, z], i) => (
-        <mesh key={i} position={[x, 6, z]}>
-          <cylinderGeometry args={[1.1, 1.1, 10, 8]} />
-          <meshLambertMaterial color="#FFFFFF" />
-        </mesh>
-      ))}
-      <mesh position={[0, 3.1, 0]}>
-        <boxGeometry args={[w * 0.45, 2.2, d * 0.45]} />
-        <meshLambertMaterial color="#22528A" />
-      </mesh>
-      <mesh position={[0, 15.2, 0]} rotation={[0, Math.PI / 4, 0]}>
-        <coneGeometry args={[Math.hypot(w, d) * 0.58, 7, 4]} />
-        <meshLambertMaterial color="#7FAEDB" />
-      </mesh>
     </group>
   )
 }
@@ -336,130 +293,144 @@ function FloatingLabel({ text, position, zone }: { text: string; position: [numb
   return null
 }
 
-function LabelBridge({ text, position, zone }: { text: string; position: [number, number, number]; zone?: boolean }) {
-  return <FloatingLabel text={text} position={position} zone={zone} />
-}
+export function Campus({ target, occupied, freeCounts, isMine, routeCells }: CampusProps) {
+  const currentStep = useGuide((s) => s.currentStep)
 
-export function Campus({ target, occupied, freeCounts, isMine }: CampusProps) {
+  // Todas las celdas blancas de camino del mapa 2D 30x30
+  const pathCells = useMemo(() => {
+    const list: GridCell[] = []
+    for (let r = 0; r < GRID_N; r += 1) {
+      for (let c = 0; c < GRID_N; c += 1) {
+        if (isPathCell(c, r)) list.push({ c, r })
+      }
+    }
+    return list
+  }, [])
+
   const labels = useMemo(
     () => [
-      { text: 'Rotonda UniCórdoba', position: [140, 10, 175] as [number, number, number], zone: false },
-      ...ORDER.map((id) => ({
-        text: `${ZONE_STYLE[id].name} · ${freeCounts[id]} libres`,
-        position: [GEO[id].cx, 20, GEO[id].cy] as [number, number, number],
-        zone: true,
+      {
+        text: 'Plazoleta',
+        position: [14.5 * TILE_3D, 9, 14.5 * TILE_3D] as [number, number, number],
+        zone: false,
+      },
+      ...ORDER.map((id) => {
+        const zg = ZONE_GRID[id]
+        return {
+          text: `${ZONE_NAMES[id]} · ${freeCounts[id]} lib`,
+          position: [(zg.c0 + zg.w / 2) * TILE_3D, 16, (zg.r0 + zg.h / 2) * TILE_3D] as [number, number, number],
+          zone: true,
+        }
+      }),
+      ...CAMPUS_BLOCKS.map((b) => ({
+        text: b.label,
+        position: [
+          (b.c + b.w / 2) * TILE_3D,
+          b.kind === 'sport' ? 8 : 20,
+          (b.r + b.h / 2) * TILE_3D,
+        ] as [number, number, number],
+        zone: false,
       })),
-      ...BUILDINGS.map((b) => ({ text: b.name, position: [b.x, b.h + 8, b.z] as [number, number, number], zone: false })),
-      ...KIOSKS.map((k) => ({ text: k.name, position: [k.x, 20, k.z] as [number, number, number], zone: false })),
     ],
     [freeCounts],
   )
 
-  const dashes = useMemo(() => {
-    const pts = [
-      new THREE.Vector3(165, 0, 175),
-      new THREE.Vector3(165, 0, target.zoneZ),
-      new THREE.Vector3(target.x, 0, target.zoneZ),
-      new THREE.Vector3(target.x, 0, target.z),
-    ]
-    const curve = new THREE.CatmullRomCurve3(pts, false, 'catmullrom', 0.02)
-    const len = curve.getLength()
-    const list: { pos: THREE.Vector3; angle: number }[] = []
-    for (let d = 4; d < len - 5; d += 7.5) {
-      const t = d / len
-      const p = curve.getPointAt(t)
-      const tan = curve.getTangentAt(t)
-      list.push({ pos: p, angle: Math.atan2(tan.x, tan.z) })
-    }
-    return list
-  }, [target])
-
   return (
     <group>
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[175, -0.2, 175]}>
-        <planeGeometry args={[540, 540]} />
-        <meshBasicMaterial color="#D9E6F2" />
+      {/* 1. Terreno base verde igual al mapa 2D 30x30 */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[WORLD_SIZE / 2, -0.1, WORLD_SIZE / 2]}>
+        <planeGeometry args={[WORLD_SIZE + 80, WORLD_SIZE + 80]} />
+        <meshBasicMaterial color="#DCEFE2" />
       </mesh>
-      {[
-        { x: 75, z: 80, w: 142, d: 145 },
-        { x: 265, z: 80, w: 155, d: 145 },
-        { x: 75, z: 270, w: 142, d: 145 },
-        { x: 265, z: 270, w: 155, d: 145 },
-      ].map((g, i) => (
-        <mesh key={i} position={[g.x, 0, g.z]}>
-          <boxGeometry args={[g.w, 0.3, g.d]} />
-          <meshBasicMaterial color="#CFE3D5" />
-        </mesh>
-      ))}
-      <mesh position={[175, 0.05, 175]}>
-        <boxGeometry args={[390, 0.4, 34]} />
-        <meshLambertMaterial color="#C6D9EC" />
-      </mesh>
-      <mesh position={[175, 0.12, 175]}>
-        <boxGeometry args={[390, 0.55, 28]} />
-        <meshBasicMaterial color="#FFFFFF" />
-      </mesh>
-      <mesh position={[165, 0.05, 175]}>
-        <boxGeometry args={[34, 0.4, 390]} />
-        <meshLambertMaterial color="#C6D9EC" />
-      </mesh>
-      <mesh position={[165, 0.12, 175]}>
-        <boxGeometry args={[28, 0.55, 390]} />
-        <meshBasicMaterial color="#FFFFFF" />
-      </mesh>
+      <gridHelper
+        args={[WORLD_SIZE, GRID_N, '#B7D4C1', '#C9E0D0']}
+        position={[WORLD_SIZE / 2, 0.02, WORLD_SIZE / 2]}
+      />
 
-      <group position={[140, 0.2, 175]}>
-        <mesh>
-          <cylinderGeometry args={[20, 20, 0.5, 24]} />
-          <meshBasicMaterial color="#FFFFFF" />
+      {/* 2. Senderos blancos (exactamente las mismas celdas blancas del mapa 2D) */}
+      {pathCells.map((cell) => {
+        const p = cellCenter3D(cell.c, cell.r)
+        return (
+          <mesh key={`path-${cell.c}-${cell.r}`} position={[p.x, 0.15, p.z]}>
+            <boxGeometry args={[TILE_3D - 0.6, 0.3, TILE_3D - 0.6]} />
+            <meshBasicMaterial color="#FFFFFF" />
+          </mesh>
+        )
+      })}
+
+      {/* 3. Fuente de la Plazoleta Central en (14.5, 14.5) */}
+      <group position={[14.5 * TILE_3D, 0.3, 14.5 * TILE_3D]}>
+        <mesh position={[0, 0.5, 0]}>
+          <cylinderGeometry args={[6.5, 7, 1.0, 20]} />
+          <meshLambertMaterial color="#BAE6FD" />
         </mesh>
-        <mesh position={[0, 0.6, 0]}>
-          <cylinderGeometry args={[10, 10.5, 1.4, 20]} />
-          <meshBasicMaterial color="#CFE3D5" />
+        <mesh position={[0, 2.0, 0]}>
+          <cylinderGeometry args={[2.0, 2.5, 3.0, 14]} />
+          <meshLambertMaterial color="#0284C7" />
         </mesh>
-        <mesh position={[0, 2.8, 0]}>
-          <cylinderGeometry args={[3.2, 4.2, 4.5, 12]} />
-          <meshLambertMaterial color="#3B76B1" />
+      </group>
+
+      {/* 4. Portería Principal en el borde sur (r = 29) */}
+      <group position={[14.5 * TILE_3D, 0.2, 29.5 * TILE_3D]}>
+        <mesh position={[0, 4, 0]}>
+          <boxGeometry args={[5 * TILE_3D, 8, TILE_3D * 0.7]} />
+          <meshLambertMaterial color="#22528A" />
         </mesh>
-        <mesh position={[0, 6.2, 0]}>
-          <sphereGeometry args={[2.6, 12, 10]} />
+        <mesh position={[0, 8.6, 0]}>
+          <boxGeometry args={[5.4 * TILE_3D, 1.4, TILE_3D * 0.9]} />
           <meshLambertMaterial color="#FFC200" />
         </mesh>
       </group>
-      <FloatingLabel text="Rotonda UniCórdoba" position={[140, 10, 175]} />
 
+      {/* 5. Todos los bloques y canchas del mapa 2D en sus mismas coordenadas */}
+      {CAMPUS_BLOCKS.map((b) => (
+        <Block3D key={b.label} b={b} />
+      ))}
+
+      {/* 6. Las 4 zonas de parqueo (P-A, P-B, P-C, P-D) en sus mismas coordenadas */}
       {ORDER.map((id) => (
-        <ParkingZone key={id} id={id} occupied={occupied[id]} target={target} isMine={isMine} />
+        <ZoneLot3D key={id} id={id} occupied={occupied[id]} target={target} isMine={isMine} />
       ))}
 
-      {BUILDINGS.map((b) => (
-        <Building key={b.name} b={b} />
-      ))}
-      {KIOSKS.map((k) => (
-        <Kiosk key={k.name} k={k} />
-      ))}
+      {/* 7. Los mismos 27 árboles y 24 arbustos del mapa 2D */}
+      {GRID_TREES.map(([tc, tr], i) => {
+        const p = cellCenter3D(tc, tr)
+        return (
+          <group key={`tree-${i}`} position={[p.x, 0.2, p.z]}>
+            <Tree scale={0.95} />
+          </group>
+        )
+      })}
+      {GRID_BUSHES.map(([bc, br], i) => {
+        const p = cellCenter3D(bc, br)
+        return (
+          <group key={`bush-${i}`} position={[p.x, 0.2, p.z]}>
+            <Bush scale={0.95} />
+          </group>
+        )
+      })}
 
-      {TREES.map((t, i) => (
-        <group key={i} position={[t.x, 0.2, t.z]}>
-          <Tree scale={t.s} />
-        </group>
-      ))}
-
-      {dashes.map((d, i) => (
-        <group key={i} position={[d.pos.x, 0, d.pos.z]} rotation={[0, d.angle, 0]}>
-          <mesh position={[0, 0.76, 0]}>
-            <boxGeometry args={[3.4, 0.5, 4.8]} />
-            <meshBasicMaterial color="#141414" />
-          </mesh>
-          <mesh position={[0, 0.82, 0]}>
-            <boxGeometry args={[2.6, 0.65, 4]} />
-            <meshBasicMaterial color="#FFC200" />
-          </mesh>
-        </group>
-      ))}
+      {/* 8. CUADROS AMARILLOS DELANTE DEL PERSONAJE (desaparecen a medida que el muñeco los pisa) */}
+      {routeCells.map((cell, idx) => {
+        if (idx <= currentStep) return null
+        const p = cellCenter3D(cell.c, cell.r)
+        const isLast = idx === routeCells.length - 1
+        return (
+          <group key={`step-${cell.c}-${cell.r}-${idx}`} position={[p.x, 0.42, p.z]}>
+            <mesh position={[0, 0, 0]}>
+              <boxGeometry args={[TILE_3D - 1.8, 0.35, TILE_3D - 1.8]} />
+              <meshBasicMaterial color="#141414" />
+            </mesh>
+            <mesh position={[0, 0.12, 0]}>
+              <boxGeometry args={[TILE_3D - 3.0, 0.45, TILE_3D - 3.0]} />
+              <meshBasicMaterial color={isLast ? '#22A45D' : '#FFC200'} />
+            </mesh>
+          </group>
+        )
+      })}
 
       {labels.map((l) => (
-        <LabelBridge key={l.text} text={l.text} position={l.position} zone={l.zone} />
+        <FloatingLabel key={l.text} text={l.text} position={l.position} zone={l.zone} />
       ))}
     </group>
   )

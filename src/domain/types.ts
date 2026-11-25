@@ -3,6 +3,38 @@ export type Pref = 'sombra' | 'sol'
 export type MapView = 'moto' | 'campus'
 export type GuideSource = 'parked' | 'zona'
 export type ReportState = 'libre' | 'pocos' | 'lleno'
+export type SpotStatus = 'libre' | 'apartado' | 'ocupado'
+export type UserRole = 'student' | 'visitor'
+
+export interface AuthUser {
+  id: string
+  role: UserRole
+  email?: string
+  name?: string
+  plate?: string
+  avatarUrl?: string
+}
+
+export type DocType = 'CC' | 'TI' | 'CE' | 'PAS'
+export type Ownership = 'propia' | 'familiar' | 'prestada'
+
+export interface Profile {
+  fullName: string
+  docType: DocType
+  docNumber: string
+  phone: string
+  plate: string
+  brand: string
+  model: string
+  color: string
+  ownership: Ownership
+  docs: {
+    propiedad: string | null
+    soat: string | null
+    foto: string | null
+  }
+  verification: 'pendiente' | 'verificado' | 'rechazado'
+}
 
 export interface Spot {
   id: string
@@ -10,7 +42,10 @@ export interface Spot {
   zone: ZoneId
   sub: string
   free: boolean
+  status: SpotStatus
   shade: boolean
+  reservedUntil?: number | null
+  userId?: string | null
 }
 
 export interface SubBlock {
@@ -61,6 +96,11 @@ export interface Geo {
   h: number
   cx: number
   cy: number
+}
+
+export interface UserPos {
+  x: number
+  y: number
 }
 
 export interface SpotInfo {

@@ -1,10 +1,12 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
+import type { GridCell } from '../components/CampusMap2D'
 import { useGuide } from '../store/useGuide'
-import type { SceneTarget } from './GuideScene'
+import { cellCenter3D } from './Campus'
 
-const SPEED = 1 / 4
+const STEP_DURATION = 0.46 // Segundos por cada salto de cuadro (10 m)
+const HOP_PORTION = 0.76   // Fracción del paso en el aire
 
 function lerpAngle(a: number, b: number, t: number) {
   let diff = b - a
@@ -13,113 +15,259 @@ function lerpAngle(a: number, b: number, t: number) {
   return a + diff * t
 }
 
-function StylizedMoto() {
+interface PersonRefs {
+  leftLeg: THREE.Group | null
+  rightLeg: THREE.Group | null
+  leftArm: THREE.Group | null
+  rightArm: THREE.Group | null
+}
+
+function StylizedPerson({
+  limbRefs,
+}: {
+  limbRefs: React.MutableRefObject<PersonRefs>
+}) {
   return (
-    <group scale={0.76}>
-      <mesh position={[0, 3, -4.8]} rotation={[0, 0, Math.PI / 2]}>
-        <cylinderGeometry args={[3, 3, 2, 12]} />
-        <meshLambertMaterial color="#141414" />
+    <group scale={0.85}>
+      <mesh position={[0, 0.15, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <circleGeometry args={[2.8, 16]} />
+        <meshBasicMaterial color="#141414" transparent opacity={0.28} />
       </mesh>
-      <mesh position={[0, 3, 5]} rotation={[0, 0, Math.PI / 2]}>
-        <cylinderGeometry args={[3, 3, 2, 12]} />
-        <meshLambertMaterial color="#141414" />
+
+      <group
+        position={[-1.05, 4.2, 0]}
+        ref={(el) => {
+          limbRefs.current.leftLeg = el
+        }}
+      >
+        <mesh position={[0, -1.8, 0]}>
+          <boxGeometry args={[1.5, 3.8, 1.6]} />
+          <meshLambertMaterial color="#1E3A5F" />
+        </mesh>
+        <mesh position={[0, -3.7, 0.35]}>
+          <boxGeometry args={[1.6, 0.9, 2.3]} />
+          <meshLambertMaterial color="#141414" />
+        </mesh>
+      </group>
+
+      <group
+        position={[1.05, 4.2, 0]}
+        ref={(el) => {
+          limbRefs.current.rightLeg = el
+        }}
+      >
+        <mesh position={[0, -1.8, 0]}>
+          <boxGeometry args={[1.5, 3.8, 1.6]} />
+          <meshLambertMaterial color="#1E3A5F" />
+        </mesh>
+        <mesh position={[0, -3.7, 0.35]}>
+          <boxGeometry args={[1.6, 0.9, 2.3]} />
+          <meshLambertMaterial color="#141414" />
+        </mesh>
+      </group>
+
+      <mesh position={[0, 6.8, 0]}>
+        <boxGeometry args={[4.2, 4.8, 2.4]} />
+        <meshLambertMaterial color="#2F69A6" />
       </mesh>
-      <mesh position={[0, 5.4, 0]}>
-        <boxGeometry args={[3.8, 3.8, 10.8]} />
+
+      <mesh position={[0, 6.9, -1.55]}>
+        <boxGeometry args={[3.1, 3.6, 1.3]} />
         <meshLambertMaterial color="#FFC200" />
       </mesh>
-      <mesh position={[0, 7.6, -1.4]}>
-        <boxGeometry args={[3.2, 1.4, 5.4]} />
-        <meshLambertMaterial color="#141414" />
+
+      <group
+        position={[-2.75, 8.6, 0]}
+        ref={(el) => {
+          limbRefs.current.leftArm = el
+        }}
+      >
+        <mesh position={[0, -1.7, 0]}>
+          <boxGeometry args={[1.25, 3.6, 1.35]} />
+          <meshLambertMaterial color="#3B76B1" />
+        </mesh>
+        <mesh position={[0, -3.7, 0]}>
+          <sphereGeometry args={[0.7, 8, 8]} />
+          <meshLambertMaterial color="#F4C29F" />
+        </mesh>
+      </group>
+
+      <group
+        position={[2.75, 8.6, 0]}
+        ref={(el) => {
+          limbRefs.current.rightArm = el
+        }}
+      >
+        <mesh position={[0, -1.7, 0]}>
+          <boxGeometry args={[1.25, 3.6, 1.35]} />
+          <meshLambertMaterial color="#3B76B1" />
+        </mesh>
+        <mesh position={[0, -3.7, 0]}>
+          <sphereGeometry args={[0.7, 8, 8]} />
+          <meshLambertMaterial color="#F4C29F" />
+        </mesh>
+      </group>
+
+      <mesh position={[0, 11.1, 0]}>
+        <sphereGeometry args={[2.0, 14, 12]} />
+        <meshLambertMaterial color="#F4C29F" />
       </mesh>
-      <mesh position={[0, 7.8, 3.9]}>
-        <boxGeometry args={[2.8, 4.8, 2]} />
+
+      <mesh position={[0, 12.1, 0]}>
+        <cylinderGeometry args={[2.05, 2.05, 1.1, 14]} />
         <meshLambertMaterial color="#FFC200" />
       </mesh>
-      <mesh position={[0, 10, 3.5]} rotation={[0, 0, Math.PI / 2]}>
-        <cylinderGeometry args={[0.5, 0.5, 6.4, 8]} />
-        <meshLambertMaterial color="#141414" />
-      </mesh>
-      <mesh position={[0, 8.6, 5]}>
-        <boxGeometry args={[2, 1.2, 0.8]} />
-        <meshBasicMaterial color="#FFFFFF" />
-      </mesh>
-      <mesh position={[0, 9.5, -1.2]}>
-        <cylinderGeometry args={[1.3, 1.5, 3.3, 10]} />
-        <meshLambertMaterial color="#3B76B1" />
-      </mesh>
-      <mesh position={[0, 12.1, -0.9]}>
-        <sphereGeometry args={[1.5, 12, 10]} />
-        <meshLambertMaterial color="#FFC200" />
+      <mesh position={[0, 11.75, 1.55]}>
+        <boxGeometry args={[3.2, 0.45, 1.8]} />
+        <meshLambertMaterial color="#D9A400" />
       </mesh>
     </group>
   )
 }
 
-export function Walker({ target, running, finished }: { target: SceneTarget; running: boolean; finished: boolean }) {
+export function Walker({
+  routeCells,
+  running,
+  finished,
+  totalMeters,
+  totalMinutes,
+}: {
+  routeCells: GridCell[]
+  running: boolean
+  finished: boolean
+  totalMeters: number
+  totalMinutes: number
+}) {
   const group = useRef<THREE.Group>(null)
+  const limbRefs = useRef<PersonRefs>({
+    leftLeg: null,
+    rightLeg: null,
+    leftArm: null,
+    rightArm: null,
+  })
   const camera = useThree((s) => s.camera)
   const update = useGuide((s) => s.update)
   const finish = useGuide((s) => s.finish)
-  const progress = useRef(0)
-  const lastHud = useRef(-1)
-  const totals = useRef({ meters: 45, minutes: 1 })
+  const elapsedRef = useRef(0)
+  const lastStepHud = useRef(-1)
+  const camAngleRef = useRef(0)
+  const camInitRef = useRef(false)
+  const lookAtRef = useRef(new THREE.Vector3())
+  const camPosGoalRef = useRef(new THREE.Vector3())
+
+  const waypoints3D = useMemo(
+    () => routeCells.map((c) => cellCenter3D(c.c, c.r)),
+    [routeCells],
+  )
+  const totalSteps = Math.max(1, waypoints3D.length - 1)
 
   useEffect(() => {
-    const { meters, minutes } = useGuide.getState()
-    if (meters > 0) totals.current = { meters, minutes }
-  }, [running])
+    elapsedRef.current = 0
+    lastStepHud.current = -1
+    camInitRef.current = false
+  }, [waypoints3D])
 
-  const route = useRef<{ curve: THREE.CatmullRomCurve3; length: number } | null>(null)
   useEffect(() => {
-    const points = [
-      new THREE.Vector3(165, 0, 175),
-      new THREE.Vector3(165, 0, target.zoneZ),
-      new THREE.Vector3(target.x, 0, target.zoneZ),
-      new THREE.Vector3(target.x, 0, target.z),
-    ]
-    const curve = new THREE.CatmullRomCurve3(points, false, 'catmullrom', 0.02)
-    route.current = { curve, length: curve.getLength() }
-    progress.current = 0
-    lastHud.current = -1
-  }, [target])
+    if (running || !finished) {
+      elapsedRef.current = 0
+      lastStepHud.current = -1
+    }
+  }, [running, finished])
 
   useFrame((_, delta) => {
-    if (!group.current || !route.current) return
+    if (!group.current || waypoints3D.length === 0) return
+
     if (running) {
-      progress.current = Math.min(1, progress.current + delta * SPEED)
-      if (progress.current >= 1) finish()
+      elapsedRef.current += delta
+      const rawStep = elapsedRef.current / STEP_DURATION
+      if (rawStep >= totalSteps) {
+        elapsedRef.current = totalSteps * STEP_DURATION
+        finish(totalSteps)
+      }
     } else if (!finished) {
-      progress.current = 0
+      elapsedRef.current = 0
     }
-    const t = finished ? 1 : progress.current
-    const pos = route.current.curve.getPointAt(Math.min(0.999, t))
-    const tangent = route.current.curve.getTangentAt(Math.min(0.999, t))
-    const angle = Math.atan2(tangent.x, tangent.z)
-    const inBay = Math.max(0, (t - 0.86) / 0.14)
-    group.current.position.set(pos.x, 0.7 + inBay * 1.05, pos.z)
-    group.current.rotation.y = lerpAngle(group.current.rotation.y, angle, 0.25)
 
-    const entering = Math.max(0, (t - 0.72) / 0.28)
-    const back = 33 - entering * 9
-    const height = 21 + entering * 30
-    const ahead = 22 - entering * 22
-    const camX = pos.x - Math.sin(angle) * back
-    const camZ = pos.z - Math.cos(angle) * back
-    camera.position.lerp(new THREE.Vector3(camX, height, camZ), 0.14)
-    camera.lookAt(pos.x + Math.sin(angle) * ahead, 4.2 + entering * 1.5, pos.z + Math.cos(angle) * ahead)
+    const rawStep = finished ? totalSteps : Math.min(totalSteps, elapsedRef.current / STEP_DURATION)
+    const stepIdx = Math.min(totalSteps - 1, Math.floor(rawStep))
+    const stepFrac = finished ? 1 : rawStep - stepIdx
+    const jumpPhase = finished ? 1 : Math.min(1, stepFrac / HOP_PORTION)
 
-    const remaining = Math.max(0, 1 - t)
-    const hudKey = Math.round(remaining * 100)
-    if (hudKey !== lastHud.current) {
-      lastHud.current = hudKey
-      update(t, Math.round(totals.current.meters * remaining), Math.ceil(totals.current.minutes * remaining))
+    const fromPt = waypoints3D[stepIdx] ?? waypoints3D[0]
+    const toPt = waypoints3D[Math.min(waypoints3D.length - 1, stepIdx + 1)] ?? fromPt
+
+    const curX = fromPt.x + (toPt.x - fromPt.x) * jumpPhase
+    const curZ = fromPt.z + (toPt.z - fromPt.z) * jumpPhase
+
+    // Salto parabólico entre un cuadro de 10m y el siguiente
+    const hopHeight = running && jumpPhase > 0 && jumpPhase < 1 ? Math.sin(jumpPhase * Math.PI) * 4.6 : 0
+
+    // Brazos y piernas al saltar
+    const swing =
+      running && jumpPhase > 0 && jumpPhase < 1
+        ? Math.sin(jumpPhase * Math.PI) * 0.78 * (stepIdx % 2 === 0 ? 1 : -1)
+        : 0
+    if (limbRefs.current.leftLeg) limbRefs.current.leftLeg.rotation.x = swing
+    if (limbRefs.current.rightLeg) limbRefs.current.rightLeg.rotation.x = -swing
+    if (limbRefs.current.leftArm) limbRefs.current.leftArm.rotation.x = -swing * 0.9
+    if (limbRefs.current.rightArm) limbRefs.current.rightArm.rotation.x = swing * 0.9
+
+    // Orientación anticipada y suave en las esquinas
+    const lookNext = waypoints3D[Math.min(waypoints3D.length - 1, stepIdx + 1)] ?? fromPt
+    const lookAfter = waypoints3D[Math.min(waypoints3D.length - 1, stepIdx + 2)] ?? lookNext
+    const dx1 = lookNext.x - fromPt.x
+    const dz1 = lookNext.z - fromPt.z
+    const dx2 = lookAfter.x - lookNext.x
+    const dz2 = lookAfter.z - lookNext.z
+
+    const segAngle = Math.hypot(dx1, dz1) > 0.1 ? Math.atan2(dx1, dz1) : camAngleRef.current
+    const nextSegAngle = Math.hypot(dx2, dz2) > 0.1 ? Math.atan2(dx2, dz2) : segAngle
+    // Anticipa suavemente el giro durante la segunda mitad del salto antes de una esquina
+    const cornerBlend = Math.max(0, (jumpPhase - 0.45) / 0.55) * 0.45
+    const desiredAngle = lerpAngle(segAngle, nextSegAngle, cornerBlend)
+
+    if (!camInitRef.current) {
+      camInitRef.current = true
+      camAngleRef.current = segAngle
+      group.current.rotation.y = segAngle
+      lookAtRef.current.set(curX + Math.sin(segAngle) * 14, 4.5, curZ + Math.cos(segAngle) * 14)
+    }
+
+    const charSmooth = 1 - Math.exp(-delta * 10)
+    const camAngleSmooth = 1 - Math.exp(-delta * 3.4)
+    const camPosSmooth = 1 - Math.exp(-delta * 5.2)
+    const camLookSmooth = 1 - Math.exp(-delta * 6.5)
+
+    group.current.position.set(curX, 0.45 + hopHeight, curZ)
+    group.current.rotation.y = lerpAngle(group.current.rotation.y, desiredAngle, charSmooth)
+    camAngleRef.current = lerpAngle(camAngleRef.current, desiredAngle, camAngleSmooth)
+
+    // Cámara orbital suave detrás del muñeco sin tirones en giros de 90°
+    const back = 33
+    const height = 26
+    const ahead = 14
+    const ca = camAngleRef.current
+    camPosGoalRef.current.set(curX - Math.sin(ca) * back, height, curZ - Math.cos(ca) * back)
+    camera.position.lerp(camPosGoalRef.current, camPosSmooth)
+
+    const desiredLook = new THREE.Vector3(curX + Math.sin(ca) * ahead, 4.5, curZ + Math.cos(ca) * ahead)
+    lookAtRef.current.lerp(desiredLook, camLookSmooth)
+    camera.lookAt(lookAtRef.current)
+
+    // Tan pronto aterriza en el cuadro (jumpPhase >= 0.85), ese cuadro amarillo desaparece
+    const landedStep = finished ? totalSteps : jumpPhase >= 0.85 ? stepIdx + 1 : stepIdx
+    if (landedStep !== lastStepHud.current && running) {
+      lastStepHud.current = landedStep
+      const remSteps = Math.max(0, totalSteps - landedStep)
+      const remMeters = remSteps * 10
+      const remMins = remMeters === 0 ? 0 : Math.max(1, Math.ceil((remMeters / Math.max(10, totalMeters)) * totalMinutes))
+      update(landedStep / totalSteps, remMeters, remMins, landedStep)
     }
   })
 
   return (
     <group ref={group}>
-      <StylizedMoto />
+      <StylizedPerson limbRefs={limbRefs} />
     </group>
   )
 }

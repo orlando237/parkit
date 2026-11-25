@@ -13,6 +13,7 @@ export function InicioScreen() {
   const setZone = useParkit((s) => s.setZone)
   const openSheet = useParkit((s) => s.openSheet)
   const reports = useParkit((s) => s.reports)
+  const profile = useParkit((s) => s.profile)
   const go = useNav((s) => s.go)
 
   const info = parked ? findSpotInfo(zones, parked.spotId) : null
@@ -44,11 +45,13 @@ export function InicioScreen() {
               </p>
             </div>
             <div className="my-3.5 h-[2px] bg-white/40" />
-            <p className="flex items-center gap-2.5 text-[14px] font-extrabold">Moto 125 cc · ABC123</p>
+            <p className="flex items-center gap-2.5 text-[14px] font-extrabold">
+              {profile ? `${profile.brand} ${profile.model}`.trim() : 'Moto'} · {profile?.plate ?? '—'}
+            </p>
             <button
               type="button"
               onClick={() => go('puesto', 'tab')}
-              className="mt-4 flex h-[52px] w-full items-center justify-center gap-2 rounded-full bg-sun text-[16px] font-black text-black"
+              className="lg-btn-sun mt-4 flex h-[52px] w-full items-center justify-center gap-2 rounded-full text-[16px] font-black"
             >
               Ver mi puesto
               <IconChevron className="h-[15px] w-[15px]" />
@@ -66,7 +69,7 @@ export function InicioScreen() {
           type="button"
           onClick={() => {
             setZone(bestId)
-            go('cupo')
+            go('zonas', 'tab')
           }}
           className="lg-card flex w-full items-center gap-3.5 rounded-[24px] p-4 text-left text-white"
         >
@@ -92,7 +95,7 @@ export function InicioScreen() {
         <button
           type="button"
           onClick={() => go('zonas', 'tab')}
-          className="mt-4 flex h-[60px] w-full items-center justify-center gap-2.5 rounded-full bg-sun text-[18px] font-black text-black shadow-[0_6px_0_#D9A400,inset_0_1.5px_1px_rgba(255,255,255,.8)]"
+          className="lg-btn-sun mt-4 flex h-[60px] w-full items-center justify-center gap-2.5 rounded-full text-[18px] font-black"
         >
           <IconGrid className="h-[18px] w-[18px]" />
           Buscar cupo cerca
@@ -100,7 +103,7 @@ export function InicioScreen() {
         <button
           type="button"
           onClick={openSheet}
-          className="lg-surface mt-4 flex h-[52px] w-full items-center justify-center gap-2.5 rounded-full border-[3px] border-card text-[16px] font-extrabold text-ink"
+          className="lg-surface mt-4 flex h-[52px] w-full items-center justify-center gap-2.5 rounded-full text-[16px] font-extrabold text-ink"
         >
           <IconFlag className="h-[17px] w-[17px]" />
           Reportar estado de una zona

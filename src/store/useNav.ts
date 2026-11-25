@@ -22,7 +22,7 @@ interface NavState {
 }
 
 export const useNav = create<NavState>((set, get) => ({
-  screen: 'zonas',
+  screen: 'inicio',
   direction: 'tab',
   stack: [],
   go: (screen, direction = 'fwd') => {

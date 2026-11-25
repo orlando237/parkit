@@ -3,7 +3,7 @@ import { useParkit } from '../store/useParkit'
 import { useNav } from '../store/useNav'
 import { findSpotInfo, formatDuration, parkedMinutes, zoneLabel } from '../domain/selectors'
 import { BrandHeader, Screen } from '../components/Screen'
-import { IconAlert, IconClock, IconGrid, IconMoto, IconPin, IconWalk } from '../components/icons'
+import { IconAlert, IconClock, IconGrid, IconMoto, IconPin } from '../components/icons'
 
 export function PuestoScreen() {
   const parked = useParkit((s) => s.parked)
@@ -11,7 +11,7 @@ export function PuestoScreen() {
   const release = useParkit((s) => s.release)
   const sendAlert = useParkit((s) => s.sendAlert)
   const setMapView = useParkit((s) => s.setMapView)
-  const setGuideSource = useParkit((s) => s.setGuideSource)
+  const profile = useParkit((s) => s.profile)
   const go = useNav((s) => s.go)
   const [tick, setTick] = useState(0)
 
@@ -45,15 +45,15 @@ export function PuestoScreen() {
               <div className="my-4 h-[2px] bg-white/40" />
               <p className="flex items-center gap-3 text-[16px] font-extrabold">
                 <IconMoto className="h-[18px] w-[18px]" />
-                Moto 125 cc · ABC123
+                {profile ? `${profile.brand} ${profile.model}`.trim() : 'Moto'} · {profile?.plate ?? '—'}
               </p>
             </section>
             <div className="mt-4 grid grid-cols-2 gap-4">
-              <article className="min-h-[118px] rounded-[22px] bg-sun px-3.5 pb-4 pt-3.5 text-black shadow-[inset_0_1.5px_1px_rgba(255,255,255,.75)]">
+              <article className="lg-btn-sun min-h-[118px] rounded-[22px] px-3.5 pb-4 pt-3.5">
                 <p className="text-[13px] font-extrabold">Parqueado hace</p>
                 <p className="mt-1 whitespace-nowrap font-display text-[22px] leading-[1.1]">{since}</p>
               </article>
-              <article className="min-h-[118px] rounded-[22px] bg-sun px-3.5 pb-4 pt-3.5 text-black shadow-[inset_0_1.5px_1px_rgba(255,255,255,.75)]">
+              <article className="lg-btn-sun min-h-[118px] rounded-[22px] px-3.5 pb-4 pt-3.5">
                 <p className="text-[13px] font-extrabold">Última ronda</p>
                 <p className="mt-1 whitespace-nowrap font-display text-[22px] leading-[1.1]">Hace 10 min</p>
               </article>
@@ -62,21 +62,10 @@ export function PuestoScreen() {
               <button
                 type="button"
                 onClick={() => {
-                  setGuideSource('parked')
-                  go('guia')
-                }}
-                className="flex h-[64px] w-full items-center justify-center gap-3 rounded-full bg-button text-[18px] font-extrabold text-white shadow-[0_5px_0_#1E4C7C,inset_0_1.5px_1px_rgba(255,255,255,.35)]"
-              >
-                <IconWalk className="h-[19px] w-[19px]" />
-                Ruta 3D a pie
-              </button>
-              <button
-                type="button"
-                onClick={() => {
                   setMapView('moto')
                   go('mapas')
                 }}
-                className="lg-surface flex h-[60px] w-full items-center justify-center gap-3 rounded-full border-[3px] border-card text-[17px] font-extrabold text-ink"
+                className="lg-surface flex h-[60px] w-full items-center justify-center gap-3 rounded-full text-[17px] font-extrabold text-ink"
               >
                 <IconPin className="h-[19px] w-[19px]" />
                 Cómo llegar a mi moto
@@ -84,14 +73,14 @@ export function PuestoScreen() {
               <button
                 type="button"
                 onClick={release}
-                className="lg-surface flex h-[60px] w-full items-center justify-center gap-3 rounded-full border-[3px] border-card text-[17px] font-extrabold text-ink"
+                className="lg-surface flex h-[60px] w-full items-center justify-center gap-3 rounded-full text-[17px] font-extrabold text-ink"
               >
                 Liberar mi cupo
               </button>
               <button
                 type="button"
                 onClick={sendAlert}
-                className="flex h-[60px] w-full items-center justify-center gap-3 rounded-full bg-black text-[18px] font-extrabold text-sun"
+                className="lg-btn-dark flex h-[60px] w-full items-center justify-center gap-3 rounded-full text-[18px] font-extrabold"
               >
                 <IconAlert className="h-[19px] w-[19px]" />
                 Alerta a vigilancia
@@ -111,7 +100,7 @@ export function PuestoScreen() {
             <button
               type="button"
               onClick={() => go('zonas', 'tab')}
-              className="mt-5 flex h-[56px] w-full items-center justify-center gap-2.5 rounded-full bg-sun text-[17px] font-black text-black"
+              className="lg-btn-sun mt-5 flex h-[56px] w-full items-center justify-center gap-2.5 rounded-full text-[17px] font-black"
             >
               <IconGrid className="h-[17px] w-[17px]" />
               Buscar cupo

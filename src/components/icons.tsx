@@ -163,17 +163,29 @@ export const IconLogo = (p: IconProps) => (
 )
 
 export const Wave = (p: IconProps) => (
-  <svg
-    viewBox="0 0 390 300"
-    preserveAspectRatio="none"
-    aria-hidden
-    className="pointer-events-none absolute bottom-0 left-0 h-[300px] w-full"
-    {...p}
-  >
-    <path
-      d="M0 70 C 90 40, 160 120, 250 190 C 300 230, 350 260, 390 270 L390 300 L0 300 Z"
-      fill="#5B93C9"
-      opacity="0.14"
-    />
-  </svg>
+  <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden>
+    {/* Orbes suaves en movimiento en la parte superior y media */}
+    <div className="wave-layer-2 absolute -right-12 -top-10 h-56 w-56 rounded-full bg-[#7FAEDB]/22 blur-2xl" />
+    <div className="wave-layer-1 absolute -left-14 top-[38%] h-52 w-52 rounded-full bg-sun/16 blur-2xl" />
+
+    <svg
+      viewBox="0 0 390 320"
+      preserveAspectRatio="none"
+      className=" absolute bottom-0 left-0 h-[320px] w-full overflow-visible"
+      {...p}
+    >
+      <path
+        className="wave-layer-2"
+        d="M-20 120 C 70 60, 180 170, 270 140 C 330 120, 375 185, 410 210 L410 320 L-20 320 Z"
+        fill="#FFC200"
+        opacity="0.11"
+      />
+      <path
+        className="wave-layer-1"
+        d="M-20 75 C 85 35, 165 130, 255 195 C 305 235, 355 262, 410 272 L410 320 L-20 320 Z"
+        fill="#5B93C9"
+        opacity="0.17"
+      />
+    </svg>
+  </div>
 )
