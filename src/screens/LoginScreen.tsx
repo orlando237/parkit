@@ -30,6 +30,7 @@ function GoogleLogo({ className }: { className?: string }) {
 
 export function LoginScreen() {
   const setAuthUser = useParkit((s) => s.setAuthUser)
+  const setVigilanteMode = useParkit((s) => s.setVigilanteMode)
   const showToast = useParkit((s) => s.showToast)
 
   const [email, setEmail] = useState('')
@@ -252,6 +253,17 @@ export function LoginScreen() {
           className="lg-surface mt-5 flex h-[52px] w-full items-center justify-center rounded-full text-[15px] font-black text-ink disabled:opacity-60"
         >
           Soy visitante
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setVigilanteMode(true)}
+          className="mx-auto mt-4 flex items-center justify-center gap-2 rounded-full bg-ink/10 px-4 py-2 text-[12.5px] font-extrabold text-ink/85 transition hover:bg-ink/15"
+        >
+          <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+          </svg>
+          Entrar como Vigilante (Ronda con cámara)
         </button>
       </div>
     </Screen>

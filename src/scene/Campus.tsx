@@ -275,7 +275,7 @@ function FloatingLabel({ text, position, zone }: { text: string; position: [numb
     const v = vec.clone().project(camera)
     const x = (v.x * 0.5 + 0.5) * size.width
     const y = (-v.y * 0.5 + 0.5) * size.height
-    const visible = v.z < 1 && x > 16 && x < size.width - 16 && y > 36 && y < size.height - 96
+    const visible = v.z < 1 && x > 16 && x < size.width - 16 && y > 64 && y < size.height - 96
     const prev = last.current
     if (prev.x !== x || prev.y !== y) {
       host.style.transform = `translate(${x}px, ${y}px) translate(-50%, -100%)`
@@ -314,7 +314,7 @@ export function Campus({ target, occupied, freeCounts, isMine, routeCells }: Cam
         position: [14.5 * TILE_3D, 9, 14.5 * TILE_3D] as [number, number, number],
         zone: false,
       },
-      ...ORDER.map((id) => {
+      ...ORDER.filter((id) => id !== target.zone).map((id) => {
         const zg = ZONE_GRID[id]
         return {
           text: `${ZONE_NAMES[id]} · ${freeCounts[id]} lib`,
@@ -332,7 +332,7 @@ export function Campus({ target, occupied, freeCounts, isMine, routeCells }: Cam
         zone: false,
       })),
     ],
-    [freeCounts],
+    [freeCounts, target.zone],
   )
 
   return (

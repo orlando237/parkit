@@ -2,10 +2,12 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { useEffect, useRef, useState } from 'react'
 import { useNav } from './store/useNav'
 import { useParkit } from './store/useParkit'
+import { useVigilanciaLive } from './lib/vigilanciaStream'
 import { BottomNav } from './components/BottomNav'
 import { Toast } from './components/Toast'
 import { ReportSheet } from './components/ReportSheet'
-import { IconLogo } from './components/icons'
+import { AlertGuardSheet } from './components/AlertGuardSheet'
+import { IconLogo, Wave } from './components/icons'
 import { ZonasScreen } from './screens/ZonasScreen'
 import { CupoScreen } from './screens/CupoScreen'
 import { ZonaScreen } from './screens/ZonaScreen'
@@ -16,6 +18,7 @@ import { GuiaScreen } from './screens/GuiaScreen'
 import { LoginScreen } from './screens/LoginScreen'
 import { OnboardingScreen } from './screens/OnboardingScreen'
 import { CameraSensorScreen } from './screens/CameraSensorScreen'
+import { VigilanteScreen } from './screens/VigilanteScreen'
 
 const SCREENS = {
   zonas: ZonasScreen,
@@ -32,9 +35,13 @@ export default function App() {
   const direction = useNav((s) => s.direction)
   const sheetOpen = useParkit((s) => s.sheetOpen)
   const closeSheet = useParkit((s) => s.closeSheet)
+  const alertSheetOpen = useParkit((s) => s.alertSheetOpen)
+  const closeAlertSheet = useParkit((s) => s.closeAlertSheet)
+  const vigilanteMode = useParkit((s) => s.vigilanteMode)
   const authUser = useParkit((s) => s.authUser)
   const profile = useParkit((s) => s.profile)
   const initRealtime = useParkit((s) => s.initRealtime)
+  const initStudentListener = useVigilanciaLive((s) => s.initStudentListener)
   const Current = SCREENS[screen]
 
   const stageKey = !authUser ? 'login' : !profile ? 'onboarding' : 'main'
@@ -46,9 +53,14 @@ export default function App() {
   useEffect(() => {
     const prev = prevStageRef.current
     prevStageRef.current = stageKey
-    if (prev !== stageKey && stageKey !== 'login') {
+    if (prev === 'login' && stageKey !== 'login') {
       setBeating(true)
       const timer = window.setTimeout(() => setBeating(false), 2100)
+      return () => window.clearTimeout(timer)
+    }
+    if (prev === 'onboarding' && stageKey === 'main') {
+      setTabBeating(true)
+      const timer = window.setTimeout(() => setTabBeating(false), 2200)
       return () => window.clearTimeout(timer)
     }
   }, [stageKey])
@@ -56,31 +68,50 @@ export default function App() {
   useEffect(() => {
     const prev = prevScreenRef.current
     prevScreenRef.current = screen
-    if (prev !== screen && stageKey === 'main' && !beating) {
+    const isSubScreen =
+      screen === 'guia' ||
+      prev === 'guia' ||
+      screen === 'cupo' ||
+      screen === 'zona' ||
+      direction !== 'tab'
+    if (prev !== screen && stageKey === 'main' && !beating && !isSubScreen) {
       setTabBeating(true)
-      const timer = window.setTimeout(() => setTabBeating(false), 620)
+      const timer = window.setTimeout(() => setTabBeating(false), 2200)
       return () => window.clearTimeout(timer)
     }
-  }, [screen, stageKey, beating])
+  }, [screen, direction, stageKey, beating])
 
-  const isCameraMode =
-    typeof window !== 'undefined' &&
-    new URLSearchParams(window.location.search).get('modo') === 'camara'
+  const urlModo =
+    typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('modo') : null
+  const isCameraMode = urlModo === 'camara'
+  const isVigilanteMode = urlModo === 'vigilante' || vigilanteMode
 
   useEffect(() => {
     return initRealtime()
   }, [initRealtime])
 
   useEffect(() => {
+    if (isCameraMode || isVigilanteMode) return
+    return initStudentListener()
+  }, [isCameraMode, isVigilanteMode, initStudentListener])
+
+  useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && sheetOpen) closeSheet()
+      if (e.key === 'Escape') {
+        if (sheetOpen) closeSheet()
+        if (alertSheetOpen) closeAlertSheet()
+      }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [sheetOpen, closeSheet])
+  }, [sheetOpen, closeSheet, alertSheetOpen, closeAlertSheet])
 
   if (isCameraMode) {
     return <CameraSensorScreen />
+  }
+
+  if (isVigilanteMode) {
+    return <VigilanteScreen />
   }
 
   const x = direction === 'back' ? '-28%' : direction === 'tab' ? 0 : '100%'
@@ -94,23 +125,24 @@ export default function App() {
             {beating ? (
               <motion.div
                 key="stage-heartbeat"
-                className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-[radial-gradient(circle_at_88%_14%,rgba(169,202,232,0.32)_0%,transparent_48%),radial-gradient(circle_at_12%_72%,rgba(255,194,0,0.16)_0%,transparent_52%),#fff]"
+                className="screen-scroll absolute inset-0 z-30 flex flex-col items-center justify-center"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 transition={{ duration: 0.25 }}
               >
+                <Wave />
                 <motion.div
                   animate={{
-                    scale: [0.9, 1.22, 0.96, 1.15, 1],
-                    y: [0, 0, 0, -14, -18],
+                    scale: [0.88, 1.18, 0.96, 1.12, 1],
+                    y: [0, 0, 0, -12, -16],
                   }}
                   transition={{
-                    duration: 1.05,
-                    times: [0, 0.22, 0.44, 0.72, 1],
-                    ease: 'easeInOut',
+                    duration: 0.95,
+                    times: [0, 0.24, 0.48, 0.74, 1],
+                    ease: [0.22, 1, 0.36, 1],
                   }}
-                  className="flex h-[88px] w-[88px] items-center justify-center rounded-[26px] bg-sun shadow-[0_14px_34px_rgba(217,164,0,0.38),inset_0_2px_2px_rgba(255,255,255,0.85)]"
+                  className="relative z-10 flex h-[88px] w-[88px] items-center justify-center rounded-[26px] bg-sun shadow-[0_14px_34px_rgba(217,164,0,0.36),inset_0_2px_2px_rgba(255,255,255,0.85)]"
                 >
                   <IconLogo className="h-13 w-13" />
                 </motion.div>
@@ -188,43 +220,48 @@ export default function App() {
                 exit={{ opacity: 0 }}
                 transition={{ duration: 0.22 }}
               >
-                <AnimatePresence mode="wait" initial={false} custom={direction}>
-                  {tabBeating ? (
+                <AnimatePresence initial={false} custom={direction}>
+                  <motion.div
+                    key={screen}
+                    className="absolute inset-0"
+                    initial={{ x, opacity: direction === 'tab' ? 0 : 1 }}
+                    animate={{ x: 0, opacity: 1 }}
+                    exit={{ x: exitX, opacity: direction === 'tab' ? 0 : 1 }}
+                    transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+                  >
+                    <Current />
+                  </motion.div>
+                </AnimatePresence>
+
+                <AnimatePresence>
+                  {tabBeating && (
                     <motion.div
-                      key={`tab-beat-${screen}`}
-                      className="absolute inset-0 z-10 flex items-center justify-center bg-[radial-gradient(circle_at_85%_16%,rgba(135,184,230,0.38)_0%,transparent_50%),radial-gradient(circle_at_15%_74%,rgba(255,194,0,0.18)_0%,transparent_54%),#fff]"
+                      key="tab-beat-overlay"
+                      className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center bg-white/55 backdrop-blur-xl"
                       initial={{ opacity: 0 }}
                       animate={{ opacity: 1 }}
                       exit={{ opacity: 0 }}
-                      transition={{ duration: 0.14 }}
+                      transition={{ duration: 0.18, ease: 'easeOut' }}
                     >
                       <motion.div
-                        animate={{ scale: [0.92, 1.22, 0.96, 1.18, 1] }}
+                        initial={{ scale: 0.9 }}
+                        animate={{ scale: [0.92, 1.16, 0.96, 1.14, 0.92] }}
                         transition={{
-                          duration: 0.54,
-                          times: [0, 0.25, 0.5, 0.78, 1],
+                          duration: 1.05,
+                          repeat: Infinity,
+                          times: [0, 0.25, 0.5, 0.75, 1],
                           ease: 'easeInOut',
                         }}
-                        className="flex h-[84px] w-[84px] items-center justify-center rounded-[25px] bg-sun shadow-[0_14px_34px_rgba(217,164,0,0.38),inset_0_2px_2px_rgba(255,255,255,0.85)]"
+                        className="relative z-10 flex h-[84px] w-[84px] items-center justify-center rounded-[25px] bg-sun shadow-[0_14px_34px_rgba(217,164,0,0.36),inset_0_2px_2px_rgba(255,255,255,0.85)]"
                       >
                         <IconLogo className="h-12 w-12" />
                       </motion.div>
-                    </motion.div>
-                  ) : (
-                    <motion.div
-                      key={screen}
-                      className="absolute inset-0"
-                      initial={{ x, opacity: direction === 'tab' ? 0 : 1 }}
-                      animate={{ x: 0, opacity: 1 }}
-                      exit={{ x: exitX, opacity: direction === 'tab' ? 0 : 1 }}
-                      transition={{ duration: 0.26, ease: [0.2, 0.8, 0.2, 1] }}
-                    >
-                      <Current />
                     </motion.div>
                   )}
                 </AnimatePresence>
                 <BottomNav />
                 <ReportSheet />
+                <AlertGuardSheet />
               </motion.div>
             )}
           </AnimatePresence>

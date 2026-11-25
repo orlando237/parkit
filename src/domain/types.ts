@@ -83,10 +83,33 @@ export interface Report {
   at: number
 }
 
+export type GuardAlertReason = 'bloqueada' | 'dano' | 'pasillo' | 'sospechoso'
+export type GuardAlertStatus = 'pendiente' | 'en_ronda' | 'atendida' | 'cancelada'
+
+export interface GuardAlert {
+  id: string
+  spotId: string
+  zoneId: ZoneId
+  zoneName: string
+  subTitle: string
+  plate: string
+  studentName: string
+  reason: GuardAlertReason
+  reasonLabel: string
+  note?: string
+  status: GuardAlertStatus
+  createdAt: number
+  attendedAt?: number
+  resolvedAt?: number
+  resolutionNote?: string
+}
+
 export interface AlertRecord {
   id: string
   spotId: string
   at: number
+  reasonLabel?: string
+  status?: GuardAlertStatus
 }
 
 export interface Geo {

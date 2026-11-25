@@ -23,6 +23,7 @@ export function Screen({ children, label, noNav }: ScreenProps) {
 export function BrandHeader({ subtitle }: { subtitle: string }) {
   const authUser = useParkit((s) => s.authUser)
   const logout = useParkit((s) => s.logout)
+  const setVigilanteMode = useParkit((s) => s.setVigilanteMode)
   const [menuOpen, setMenuOpen] = useState(false)
 
   return (
@@ -82,9 +83,19 @@ export function BrandHeader({ subtitle }: { subtitle: string }) {
                     type="button"
                     onClick={() => {
                       setMenuOpen(false)
+                      setVigilanteMode(true)
+                    }}
+                    className="mt-2.5 h-8 w-full rounded-full border border-card/35 bg-white/80 text-[12px] font-black text-ink"
+                  >
+                    Modo Vigilante (Ronda)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMenuOpen(false)
                       logout()
                     }}
-                    className="mt-2.5 h-8 w-full rounded-full bg-sun text-[12px] font-black text-black"
+                    className="mt-1.5 h-8 w-full rounded-full bg-sun text-[12px] font-black text-black"
                   >
                     Cerrar sesión
                   </button>

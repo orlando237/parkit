@@ -17,6 +17,8 @@ import {
 import type {
   AlertRecord,
   AuthUser,
+  GuardAlert,
+  GuardAlertReason,
   GuideSource,
   MapView,
   Parked,
@@ -47,6 +49,10 @@ interface ParkitState {
   guideSource: GuideSource
   reports: Report[]
   alerts: AlertRecord[]
+  activeAlert: GuardAlert | null
+  alertSheetOpen: boolean
+  lastPatrolAt: number | null
+  vigilanteMode: boolean
   toast: Toast | null
   sheetOpen: boolean
   authUser: AuthUser | null
@@ -57,6 +63,7 @@ interface ParkitState {
   setAuthUser: (user: AuthUser | null) => void
   setProfile: (profile: Profile) => void
   setUserPos: (pos: UserPos) => void
+  setVigilanteMode: (enabled: boolean) => void
   logout: () => void
   setZone: (id: ZoneId) => void
   setPref: (pref: Pref) => void
@@ -69,6 +76,12 @@ interface ParkitState {
   reserve: (spotId: string) => void
   release: () => void
   sendReport: (zone: ZoneId, state: ReportState, shade: boolean) => void
+  openAlertSheet: () => void
+  closeAlertSheet: () => void
+  createGuardAlert: (reason: GuardAlertReason, reasonLabel: string, note?: string) => GuardAlert | null
+  syncGuardAlert: (alert: GuardAlert) => void
+  cancelGuardAlert: () => GuardAlert | null
+  dismissGuardAlert: () => void
   sendAlert: () => void
   openSheet: () => void
   closeSheet: () => void
@@ -167,6 +180,10 @@ export const useParkit = create<ParkitState>()(
       guideSource: 'parked',
       reports: [],
       alerts: [],
+      activeAlert: null,
+      alertSheetOpen: false,
+      lastPatrolAt: null,
+      vigilanteMode: false,
       toast: null,
       sheetOpen: false,
       authUser: null,
@@ -175,6 +192,7 @@ export const useParkit = create<ParkitState>()(
       realtimeConnected: false,
 
       setAuthUser: (authUser) => set({ authUser, profile: null }),
+      setVigilanteMode: (vigilanteMode) => set({ vigilanteMode }),
       setUserPos: (pos) =>
         set({
           userPos: {
@@ -190,7 +208,7 @@ export const useParkit = create<ParkitState>()(
         })),
       logout: () => {
         if (supabase) void supabase.auth.signOut()
-        set({ authUser: null, profile: null })
+        set({ authUser: null, profile: null, vigilanteMode: false })
       },
       setZone: (id) => set({ curZone: id, chosen: null, inspected: null }),
       setPref: (pref) => set({ pref, chosen: null }),
@@ -267,6 +285,8 @@ export const useParkit = create<ParkitState>()(
           parked: { zone: spot.zone, spotId, since: Date.now() },
           chosen: null,
           inspected: spotId,
+          activeAlert: null,
+          alertSheetOpen: false,
         })
         void updateCupoInDb(spotId, {
           estado: 'apartado',
@@ -285,6 +305,8 @@ export const useParkit = create<ParkitState>()(
           parked: null,
           chosen: null,
           inspected: null,
+          activeAlert: null,
+          alertSheetOpen: false,
         })
         void updateCupoInDb(parked.spotId, {
           estado: 'libre',
@@ -324,13 +346,76 @@ export const useParkit = create<ParkitState>()(
         get().showToast(`Gracias. ${zone.name} se actualizó con tu reporte.`)
       },
 
-      sendAlert: () => {
-        const { parked, alerts } = get()
-        if (!parked) return
+      openAlertSheet: () => set({ alertSheetOpen: true }),
+      closeAlertSheet: () => set({ alertSheetOpen: false }),
+
+      createGuardAlert: (reason, reasonLabel, note) => {
+        const { parked, zones, profile, authUser, alerts } = get()
+        if (!parked) return null
+        const info = findSpotInfo(zones, parked.spotId)
+        const now = Date.now()
+        const alert: GuardAlert = {
+          id: `al-${now}-${Math.random().toString(36).slice(2, 6)}`,
+          spotId: parked.spotId,
+          zoneId: parked.zone,
+          zoneName: info ? `Zona ${info.zone.id} · ${info.zone.name}` : `Zona ${parked.zone}`,
+          subTitle: info?.sub.title ?? 'Sub-bloque principal',
+          plate: profile?.plate ?? authUser?.plate ?? 'SIN-PLACA',
+          studentName: profile?.fullName ?? authUser?.name ?? 'Estudiante Unicórdoba',
+          reason,
+          reasonLabel,
+          note: note?.trim() ? note.trim() : undefined,
+          status: 'pendiente',
+          createdAt: now,
+        }
         set({
-          alerts: [{ id: `a-${Date.now()}`, spotId: parked.spotId, at: Date.now() }, ...alerts].slice(0, 20),
+          activeAlert: alert,
+          alertSheetOpen: false,
+          alerts: [
+            { id: alert.id, spotId: alert.spotId, at: now, reasonLabel, status: 'pendiente' as const },
+            ...alerts,
+          ].slice(0, 20),
         })
-        get().showToast(`Alerta enviada. Vigilancia revisará tu cupo ${parked.spotId}.`)
+        get().showToast(`Alerta registrada para el cupo ${alert.spotId} · Revisión solicitada.`)
+        return alert
+      },
+
+      syncGuardAlert: (incoming) => {
+        const { activeAlert, parked } = get()
+        if (!activeAlert && parked?.spotId !== incoming.spotId) return
+        if (activeAlert && activeAlert.id !== incoming.id) return
+        set((s) => ({
+          activeAlert: incoming,
+          lastPatrolAt: incoming.status === 'atendida' ? incoming.resolvedAt ?? Date.now() : s.lastPatrolAt,
+          alerts: s.alerts.map((a) => (a.id === incoming.id ? { ...a, status: incoming.status } : a)),
+        }))
+        if (incoming.status === 'en_ronda' && activeAlert?.status !== 'en_ronda') {
+          get().showToast(`Vigilante en ronda revisando tu cupo ${incoming.spotId} en vivo.`)
+        } else if (incoming.status === 'atendida' && activeAlert?.status !== 'atendida') {
+          get().showToast(`Ronda finalizada en cupo ${incoming.spotId}.`)
+        }
+      },
+
+      cancelGuardAlert: () => {
+        const { activeAlert } = get()
+        if (!activeAlert) return null
+        const cancelled: GuardAlert = {
+          ...activeAlert,
+          status: 'cancelada',
+          resolvedAt: Date.now(),
+        }
+        set((s) => ({
+          activeAlert: null,
+          alerts: s.alerts.map((a) => (a.id === cancelled.id ? { ...a, status: 'cancelada' as const } : a)),
+        }))
+        get().showToast(`Alerta del cupo ${cancelled.spotId} cancelada.`)
+        return cancelled
+      },
+
+      dismissGuardAlert: () => set({ activeAlert: null }),
+
+      sendAlert: () => {
+        set({ alertSheetOpen: true })
       },
 
       openSheet: () => set({ sheetOpen: true }),
@@ -496,6 +581,8 @@ export const useParkit = create<ParkitState>()(
         classAt: s.classAt,
         reports: s.reports,
         alerts: s.alerts,
+        activeAlert: s.activeAlert,
+        lastPatrolAt: s.lastPatrolAt,
         authUser: s.authUser,
         profile: s.profile,
       }),
